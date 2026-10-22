@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1f5c48">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.webmanifest">
+<script src="version.js"></script>
+<script src="data.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>مصحف ورش</title>
+<style>
+/* Layout: the page fills the screen; header and footer float over it and fade away while reading */
+:root{
+  --ground:#e7ebe5;
+  --surface:#f8f9f5;
+  --bar:rgba(248,249,245,.92);
+  --ink:#1c2621;
+  --muted:#5d6b63;
+  --line:#cfd6cf;
+  --accent:#9a6b14;
+  --accent-soft:#f1e5c8;
+  --green:#1f5c48;
+  --green-soft:#dcebe3;
+  --shadow:0 1px 2px rgba(20,40,30,.08),0 8px 28px rgba(20,40,30,.12);
+  --f-ar:"Geeza Pro","Noto Naskh Arabic","Traditional Arabic","Arabic Typesetting","Times New Roman",serif;
+  --f-ui:system-ui,-apple-system,"Noto Sans Arabic","Segoe UI",Tahoma,Roboto,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ground:#0c1110;--surface:#18201d;--bar:rgba(20,27,24,.92);--ink:#e6ebe7;--muted:#97a69e;--line:#2b3631;
+  --accent:#d7a947;--accent-soft:#3a2f17;--green:#7cc4a6;--green-soft:#1d332a;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.5);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ground:#0c1110;--surface:#18201d;--bar:rgba(20,27,24,.92);--ink:#e6ebe7;--muted:#97a69e;--line:#2b3631;
+  --accent:#d7a947;--accent-soft:#3a2f17;--green:#7cc4a6;--green-soft:#1d332a;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.5);color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overscroll-behavior:none}
+body{background:var(--ground);color:var(--ink);font:15px/1.45 var(--f-ui);overflow:hidden;-webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none;touch-action:manipulation}
+[hidden]{display:none!important}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* the page */
+/* one-finger gestures belong to the app (swiping turns pages); pinch zoom stays with the browser */
+.stage{position:fixed;inset:0;overflow:hidden;touch-action:pinch-zoom}
+.stage.zoomed{touch-action:auto}
+/* each spread is a full-screen layer, so the current and the next one can slide side by side */
+.spread{position:absolute;inset:0;display:flex;flex-direction:row;justify-content:center;align-items:center;container-type:size;
+  padding:max(4px,env(safe-area-inset-top,0px)) max(4px,env(safe-area-inset-right,0px)) max(4px,env(safe-area-inset-bottom,0px)) max(4px,env(safe-area-inset-left,0px));
+  will-change:transform}
+.pg{width:min(100cqw,100cqh*800/1242);aspect-ratio:800/1242;background:#fffcdb;box-shadow:var(--shadow);overflow:hidden;border-radius:3px;
+  display:flex;flex-direction:column;container-type:size;position:relative}
+.spread.two .pg{width:min(50cqw,100cqh*800/1242)}
+.spread.two .pg:first-child{border-radius:0 3px 3px 0}
+.spread.two .pg:last-child{border-radius:3px 0 0 3px}
+/* fill mode: the page is stretched to the whole screen instead of keeping its proportions */
+:root[data-fit="fill"] .spread{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+:root[data-fit="fill"] .pg{aspect-ratio:auto;width:100cqw;height:100cqh;border-radius:0;box-shadow:none}
+:root[data-fit="fill"] .spread.two .pg{width:50cqw;border-radius:0}
+:root[data-fit="fill"] .pg img{object-fit:fill}
+/* pages 3-49 end in a tajweed colour legend below the frame (rows 1168-1242 of 1242): fill mode pushes it
+   off the bottom of the page so the stretched page ends at the frame */
+:root[data-fit="fill"] .pg.framed{--k:1.06336}
+:root[data-fit="fill"] .pg.framed img{height:calc(100% * var(--k));flex:none}
+.pg img{display:block;width:100%;height:100%;object-fit:contain;-webkit-user-drag:none;pointer-events:none;
+  filter:brightness(var(--dim,1));transition:filter .25s ease}
+/* reading tones: warm softens the white, night inverts the page and keeps the tajweed colours readable */
+:root[data-tone="warm"] .pg{background:#f3e7c9}
+/* page number drawn over the image: a label box like the printed «حزب» one, centred in the empty top margin
+   (positions measured on the 800x1242 pages); the two decorated opening pages use their bottom margin */
+.pno{position:absolute;left:44.4%;width:11.2%;top:calc(.4% * var(--k,1));height:calc(3% * var(--k,1));display:grid;place-items:center;
+  background:#fff;border:max(1px,.16cqh) solid #4a9e7e;color:#000;font:500 1.9cqh/1 Arial,"Helvetica Neue",Roboto,sans-serif;font-variant-numeric:lining-nums tabular-nums;
+  filter:brightness(var(--dim,1));transition:filter .25s ease}
+.pno.low{top:94.2%}
+.pno.wide{left:54.4%}   /* pages 601-604: the three-surah label reaches the centre */
+.pg .miss{position:absolute;left:10%;right:10%;top:45%;text-align:center;color:#5d6b63;font-size:14px;line-height:1.6}
+:root[data-tone="warm"] .pg img,:root[data-tone="warm"] .pno{filter:sepia(.4) saturate(.9) brightness(calc(var(--dim,1) * .96))}
+:root[data-tone="night"] .pg{background:#1e1c09}
+:root[data-tone="night"] .pg img,:root[data-tone="night"] .pno{filter:invert(.92) hue-rotate(180deg) saturate(.85) brightness(calc(var(--dim,1) * .88)) contrast(.95)}
+:root[data-tone="night"] .stage{background:#050706}
+/* black: full inversion pushed with contrast so the paper is exactly #000 (pixels off on OLED) and the text white */
+:root[data-tone="black"] .pg{background:#000;box-shadow:none}
+:root[data-tone="black"] .pg img,:root[data-tone="black"] .pno{filter:invert(1) hue-rotate(180deg) contrast(1.3) brightness(var(--dim,1))}
+:root[data-tone="black"] .stage{background:#000}
+:root[data-tone="black"]{--ground:#000;--surface:#0b0b0b;--bar:rgba(0,0,0,.92);--line:#262626;--green-soft:#10251c;--accent-soft:#2a2210}
+
+/* floating bars */
+.bar{position:fixed;left:0;right:0;z-index:10;background:var(--bar);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px));
+  transition:transform .25s ease,opacity .25s ease}
+.top{top:0;border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
+.bottom .row{direction:ltr}
+.bottom{bottom:0;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.calm .top{transform:translateY(-100%);opacity:0;pointer-events:none}
+.calm .bottom{transform:translateY(100%);opacity:0;pointer-events:none}
+.row{display:flex;align-items:center;gap:6px;min-height:54px}
+.iconbtn{display:inline-grid;place-items:center;width:42px;height:42px;border-radius:10px;border:0;background:transparent;color:var(--ink);flex:none}
+.iconbtn:hover{background:var(--green-soft)}
+.iconbtn svg{width:22px;height:22px}
+.iconbtn.on{color:var(--accent)}
+.where{flex:1;min-width:0;display:flex;align-items:baseline;justify-content:center;gap:12px;flex-wrap:wrap;text-align:center;row-gap:0}
+.where .sname{font-family:var(--f-ar);font-size:21px;line-height:1.2;direction:rtl}
+.where .meta{color:var(--muted);font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.navbtn{border:1px solid var(--line);background:var(--surface);border-radius:10px;height:38px;padding:0 12px;display:inline-flex;align-items:center;gap:4px;flex:none;font-size:14px}
+.navbtn svg{width:18px;height:18px}
+input[type=range]{flex:1;min-width:0;accent-color:var(--green);direction:rtl;height:28px}
+.pagebox{width:58px;padding:7px 4px;border:1px solid var(--line);border-radius:10px;background:var(--surface);text-align:center;font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text}
+@media (max-width:520px){.navbtn span{display:none}.navbtn{padding:0 8px}.where{gap:0 10px}.where .sname{font-size:19px}}
+
+/* tap zones hint */
+/* touches pass through the hint to the page, so a swipe in the first seconds still turns it */
+.hint{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:15;pointer-events:none;background:var(--ink);color:var(--surface);
+  padding:12px 18px;border-radius:14px;font-size:14px;text-align:center;line-height:1.5;box-shadow:var(--shadow);max-width:min(320px,calc(100% - 32px));transition:opacity .3s}
+.hint b{display:block;font-size:15px}
+.hint.fade{opacity:0;pointer-events:none}
+
+/* index drawer */
+.scrim{position:fixed;inset:0;background:rgba(8,16,12,.42);z-index:20}
+.drawer{position:fixed;top:0;bottom:0;right:0;width:min(380px,100%);background:var(--surface);z-index:21;display:flex;flex-direction:column;
+  box-shadow:var(--shadow);transform:translateX(102%);transition:transform .22s ease;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px);-webkit-user-select:text;user-select:text}
+.drawer.show{transform:none}
+.dtop{display:flex;align-items:center;gap:8px;padding:10px 16px 10px 12px;border-bottom:1px solid var(--line)}
+.tabs{flex:1;display:flex;gap:4px;padding:3px;border-radius:12px;background:var(--ground)}
+.tabs button{flex:1;border:0;background:transparent;border-radius:9px;padding:8px 6px;font-size:15px;font-weight:600;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.dbody{flex:1;overflow-y:auto;overscroll-behavior:contain;padding-bottom:16px}
+.sec{padding:14px 16px 4px;font-size:13px;color:var(--muted);font-weight:600}
+.goto{display:flex;gap:8px;padding:6px 16px 4px}
+.goto input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground)}
+.goto button{border:0;border-radius:10px;background:var(--green);color:var(--surface);padding:0 16px;font-weight:600}
+.gomsg{padding:4px 16px 0;font-size:12px;color:var(--muted);min-height:18px}
+.gomsg.bad{color:#b4412d}
+.item{display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:10px;width:100%;padding:9px 16px;border:0;background:transparent;text-align:start}
+.item:hover{background:var(--green-soft)}
+.item.cur{background:var(--accent-soft)}
+.item .no{width:30px;height:30px;display:grid;place-items:center;font-size:12px;color:var(--green);font-variant-numeric:tabular-nums;border:1px solid currentColor;border-radius:50%;transform:rotate(45deg)}
+.item .no span{transform:rotate(-45deg)}
+.item .t{font-weight:500}
+.item .sub{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.item .ar{font-family:var(--f-ar);font-size:20px;direction:rtl}
+.item .x{width:34px;height:34px}
+.empty{padding:6px 16px;color:var(--muted);font-size:13px}
+.help{padding:4px 16px 8px;font-size:12px;color:var(--muted);line-height:1.7}
+kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:var(--ground)}
+
+/* the bottom bar can be switched off in the settings; messages then sit lower */
+:root[data-nobar] .bottom{display:none}
+:root[data-nobar]{--toast-y:24px}
+.toast{position:fixed;left:50%;bottom:calc(var(--toast-y,84px) + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);
+  padding:8px 14px;border-radius:20px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;white-space:nowrap}
+.toast.show{opacity:1}
+.seg{display:flex;gap:6px;padding:6px 16px 4px}
+.seg button{flex:1;border:1px solid var(--line);background:var(--ground);border-radius:10px;padding:9px 4px;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--green);color:var(--surface);border-color:var(--green);font-weight:600}
+.cap{padding:10px 16px 0;font-size:13px;color:var(--muted)}
+.dim{display:flex;align-items:center;gap:10px;padding:8px 16px 0;font-size:13px;color:var(--muted)}
+.row2{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 16px;font-size:14px}
+.row2 small{display:block;color:var(--muted);font-size:12px}
+.pill{border:1px solid var(--line);background:var(--ground);border-radius:10px;padding:8px 12px;font-size:13px;white-space:nowrap}
+.pill[aria-pressed="true"]{background:var(--green-soft);border-color:var(--green);color:var(--green);font-weight:600}
+.pill.primary{background:var(--green);color:var(--surface);border-color:var(--green);font-weight:600}
+.meter{height:6px;margin:2px 16px 0;border-radius:3px;background:var(--line);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--green);transition:width .2s}
+.banner{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:40;display:flex;align-items:center;gap:12px;
+  background:var(--ink);color:var(--surface);padding:10px 12px 10px 16px;border-radius:14px;box-shadow:var(--shadow);font-size:14px;max-width:calc(100% - 24px)}
+.banner button{border:0;border-radius:9px;background:var(--accent);color:#1c1400;font-weight:600;padding:7px 12px}
+@media (prefers-reduced-motion:reduce){*:not(.spread){transition:none!important}}   /* page animation is its own setting */
+</style>
+</head>
+<body>
+<main class="stage" id="stage" aria-label="صفحة المصحف"></main>
+
+<header class="bar top" id="topbar">
+  <div class="row">
+    <button class="iconbtn" id="menuBtn" aria-label="فتح الفهرس" title="الفهرس (I)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    </button>
+    <div class="where" aria-live="polite">
+      <div class="sname" id="hSurah"></div>
+      <div class="meta" id="hMeta"></div>
+    </div>
+    <button class="iconbtn" id="bmBtn" aria-label="ضع علامة على هذه الصفحة" title="علامة (B)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path id="bmPath" d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg>
+    </button>
+    <button class="iconbtn" id="trackBtn" aria-label="الموضع: الورد اليومي. التبديل إلى التعلّم" title="الورد اليومي / التعلّم (T)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g id="trackIco"></g></svg>
+    </button>
+    <button class="iconbtn" id="themeBtn" aria-label="وضع القراءة: نهاري" title="وضع القراءة (N)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><g id="toneIco"></g></svg>
+    </button>
+    <button class="iconbtn" id="fsBtn" aria-label="ملء الشاشة" title="ملء الشاشة (F)">
+      <svg id="fsIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+  </div>
+</header>
+
+<footer class="bar bottom" id="bottombar">
+  <div class="row">
+    <button class="navbtn" id="nextBtn" aria-label="الصفحة التالية">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg><span>التالية</span>
+    </button>
+    <input type="range" id="slider" min="1" max="604" value="1" aria-label="الصفحة">
+    <input class="pagebox" id="pageBox" inputmode="numeric" aria-label="انتقل إلى صفحة" value="1">
+    <button class="navbtn" id="prevBtn" aria-label="الصفحة السابقة">
+      <span>السابقة</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+</footer>
+
+<div class="hint" id="hint" hidden></div>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" aria-label="القائمة" aria-hidden="true">
+  <div class="dtop">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tabIdx" data-tab="idx" aria-controls="paneIdx">الفهرس</button>
+      <button role="tab" id="tabSet" data-tab="set" aria-controls="paneSet">الإعدادات</button>
+    </div>
+    <button class="iconbtn" id="closeBtn" aria-label="إغلاق القائمة">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="dbody" id="dbody">
+   <div id="paneIdx" role="tabpanel" aria-labelledby="tabIdx">
+    <div class="sec">انتقل إلى</div>
+    <form class="goto" id="gotoForm" autocomplete="off">
+      <input id="gotoInput" dir="auto" placeholder="صفحة 1–604، أو آية مثل 2:255" aria-label="صفحة أو آية">
+      <button type="submit">اذهب</button>
+    </form>
+    <div class="gomsg" id="gotoMsg">ترقيم الآيات حسب العدّ المدني الأخير (رواية ورش).</div>
+    <div class="sec">السور</div>
+    <div id="surahList"></div>
+    <div class="sec">الأحزاب</div>
+    <div id="hizbList"></div>
+    <div class="sec">موضع القراءة</div>
+    <div id="trackList"></div>
+    <div class="sec">العلامات</div>
+    <div id="bmList"></div>
+   </div>
+   <div id="paneSet" role="tabpanel" aria-labelledby="tabSet" hidden>
+    <div class="sec">العرض</div>
+    <div class="seg" id="toneSeg" role="group" aria-label="وضع القراءة">
+      <button data-tone="day">نهاري</button><button data-tone="warm">دافئ</button><button data-tone="night">ليلي</button><button data-tone="black">أسود</button>
+    </div>
+    <div class="seg" id="fitSeg" role="group" aria-label="حجم الصفحة">
+      <button data-fit="fit">ملاءمة الصفحة</button><button data-fit="fill">ملء الشاشة</button>
+    </div>
+    <div class="gomsg" id="fitNote"></div>
+    <label class="dim">السطوع <input type="range" id="dimRange" min="50" max="100" value="100" aria-label="سطوع الصفحة"> </label>
+    <div class="cap">حركة تقليب الصفحة</div>
+    <div class="seg" id="animSeg" role="group" aria-label="حركة تقليب الصفحة">
+      <button data-anim="slide">انزلاق</button><button data-anim="fade">تلاشٍ</button><button data-anim="none">بدون</button>
+    </div>
+    <div class="row2"><span>اهتزاز عند التقليب<small id="buzzNote">اهتزاز قصير مع كل صفحة</small></span><button class="pill" id="buzzBtn" aria-pressed="false">متوقف</button></div>
+    <div class="seg" id="buzzSeg" role="group" aria-label="قوة الاهتزاز" hidden>
+      <button data-ms="20">خفيف</button><button data-ms="40">متوسط</button><button data-ms="70">قوي</button>
+    </div>
+    <div class="row2"><span>شريط التنقل السفلي<small id="barNote">أزرار التالية والسابقة وشريط الصفحات</small></span><button class="pill" id="barBtn" aria-pressed="true">ظاهر</button></div>
+    <div class="row2"><span>إبقاء الشاشة مضاءة<small>أثناء القراءة</small></span><button class="pill" id="wakeBtn" aria-pressed="true">مفعّل</button></div>
+    <div class="row2"><span>اتجاه الشاشة<small id="oriNote">تدوير حر</small></span><button class="pill" id="oriBtn">تلقائي</button></div>
+    <div class="sec">التطبيق</div>
+    <div class="row2"><span>القراءة دون اتصال<small id="offNote">جارٍ التحقق…</small></span><button class="pill" id="offBtn" aria-pressed="false" disabled>متوقف</button></div>
+    <div class="meter" id="offMeter" hidden><i id="offBar"></i></div>
+    <div class="row2"><span>الإصدار<small id="verDate"></small></span><b id="verNo" dir="ltr"></b></div>
+    <div class="row2" id="installRow" hidden><span>تثبيت التطبيق<small>أضفه إلى الشاشة الرئيسية</small></span><button class="pill primary" id="installBtn">تثبيت</button></div>
+    <div class="sec">مساعدة</div>
+    <div class="help">
+    اسحب الصفحة أو اضغط على جانبَيها لتقليبها، واضغط على وسطها لإظهار الأزرار أو إخفائها.
+    <br><kbd>←</kbd> <kbd>→</kbd> تقليب · <kbd>F</kbd> ملء الشاشة · <kbd>B</kbd> علامة · <kbd>T</kbd> الورد/التعلّم · <kbd>I</kbd> الفهرس · <kbd>S</kbd> الإعدادات · <kbd>N</kbd> وضع القراءة · <kbd>Z</kbd> ملء الشاشة بالصفحة
+    <br>صور الصفحات: مصحف التجويد برواية ورش، <span dir="ltr">easyquran-eg.com</span>
+    </div>
+   </div>
+  </div>
+</aside>
+<div class="toast" id="toast"></div>
+<div class="banner" id="updateBanner" hidden role="status"><span>يتوفر إصدار جديد.</span><button id="updateBtn">تحديث</button></div>
+
+<script>
+var M = self.MUSHAF, N = M.pageStart.length - 2;   // 604 pages, from data.js
+var PAGES = []; for(var q=1; q<=N; q++) PAGES.push('pages/'+String(q).padStart(3,'0')+'.webp');
+/* verses are numbered 1-6214 through the whole Quran ("id"); pages and surahs map to and from that */
+function lastLE(arr, x, lo){ var a=lo||0, b=arr.length-1; while(a<b){ var m=(a+b+1)>>1; if(arr[m]<=x) a=m; else b=m-1; } return a; }
+var SURAH_START = M.surahs.map(function(x){ return x[0]; });
+function pageOfId(id){ return Math.max(1, Math.min(N, lastLE(M.pageStart, id, 1))); }
+var SURAHS = M.surahs.map(function(x,i){ return {n:i+1, ar:x[2], start:x[0], verses:x[1], page:pageOfId(x[0])}; });
+var HIZB = M.hizb.map(function(pg,i){ return [i+1, pg, (i>>1)+1]; });   // [hizb, first page, juz]
+function ayat(n){ return n+' '+(n%100>=3&&n%100<=10 ? 'آيات' : 'آية'); }
+function verseOf(id){ var k=lastLE(SURAH_START, id); return [k+1, id-SURAH_START[k]+1]; }       // [surah, verse]
+function firstVerse(p){ return verseOf(M.pageStart[p]); }
+function lastVerse(p){ return verseOf(Math.max(M.pageStart[p], M.pageStart[p+1]-1)); }
+function pageOfVerse(s,a){ return pageOfId(SURAHS[s-1].start + a - 1); }
+function surahsOn(p){ var a=verseOf(M.pageStart[p])[0], b=lastVerse(p)[0], out=[]; for(var k=a;k<=b;k++) out.push(SURAHS[k-1]); return out; }
+function surahOn(p){ return SURAHS[firstVerse(p)[0]-1]; }
+function hizbOf(p){ return HIZB[lastLE(M.hizb, p)]; }
+
+var store={get:function(k,d){try{var v=localStorage.getItem('warsh12.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set:function(k,v){try{localStorage.setItem('warsh12.'+k,JSON.stringify(v))}catch(e){}}};
+function $(id){ return document.getElementById(id); }
+
+var page = 1, bookmarks = store.get('bookmarks', []), drawerOpen = false;
+/* two reading positions, each remembering its own page: the daily portion and learning */
+var TRACKS = {daily:'الورد اليومي', learn:'التعلّم'}, track = store.get('track','daily')==='learn' ? 'learn' : 'daily';
+var pos = store.get('pos', null) || {daily: store.get('page',1), learn: 1};
+var stage=$('stage'), cur=null, slider=$('slider'), pageBox=$('pageBox');
+function twoUp(){ return matchMedia('(min-width: 900px) and (min-aspect-ratio: 5/4)').matches; }
+function pagesFor(p){ if(!twoUp()) return [p]; var a = p%2 ? p : p-1; return a+1<=N ? [a,a+1] : [a]; }
+
+/* ---------- pages ---------- */
+function makePage(p){
+  var d=document.createElement('div'); d.className=p>2?'pg framed':'pg'; d.dataset.p=p;
+  var img=document.createElement('img'); img.alt='الصفحة '+p; img.decoding='async'; img.src=PAGES[p-1];
+  var n=document.createElement('div'); n.className=p<=2?'pno low':p>=601?'pno wide':'pno'; n.setAttribute('aria-hidden','true'); n.textContent=p;
+  img.onerror=function(){ img.style.visibility='hidden'; n.hidden=true; if(d.querySelector('.miss')) return; var m=document.createElement('div'); m.className='miss';
+    m.textContent='هذه الصفحة غير محفوظة على الجهاز. اتصل بالإنترنت، أو فعّل «القراءة دون اتصال» من الإعدادات.'; d.appendChild(m); };
+  d.append(img,n); return d;
+}
+function warm(p){ if(p>=1&&p<=N){ var i=new Image(); i.decoding='async'; i.src=PAGES[p-1]; if(i.decode) i.decode().catch(function(){}); } }
+function buildSpread(ps){
+  var el=document.createElement('div'); el.className='spread'+(ps.length>1?' two':''); el.dataset.ps=ps.join();
+  ps.forEach(function(q){ el.appendChild(makePage(q)); }); return el;
+}
+function setX(el, x, ms){
+  el.style.transition = ms ? 'transform '+ms+'ms cubic-bezier(.2,.75,.3,1), opacity '+ms+'ms ease' : 'none';
+  el.style.transform = x ? 'translateX('+x+'px)' : '';
+}
+function retire(el, ms){ el.classList.add('gone'); setTimeout(function(){ el.remove(); }, ms+40); }
+/* pages ahead in reading order (dir 1) or behind (dir -1); 0 at either end of the mushaf */
+function target(dir){ var ps=pagesFor(page), t = dir>0 ? ps[ps.length-1]+1 : ps[0]-1; return t>=1 && t<=N ? t : 0; }
+// opts: {instant} for start-up and resizes, {drag} when a swipe already brought the next spread on screen
+function go(p, opts){
+  opts = opts===true ? {instant:true} : (opts||{});
+  p = Math.max(1, Math.min(N, parseInt(p,10)||1));
+  var prev = page; page = p; pos[track] = page; store.set('pos', pos);
+  if(history.state && history.state.app && !history.state.panel) history.replaceState({app:1, p:page, t:track}, '');
+  var ps = pagesFor(p), key = ps.join();
+  if(!cur || cur.dataset.ps!==key){
+    var d = opts.drag, old = cur, mode = (opts.instant || !old) ? 'none' : animMode;
+    var next = d && d.el && d.el.dataset.ps===key ? d.el : buildSpread(ps);
+    if(d && d.el && d.el!==next) d.el.remove();
+    if(!next.parentNode) stage.appendChild(next);
+    cur = next;
+    var dir = p>prev ? 1 : -1, W = stage.clientWidth;     // forward moves the pages to the right, as in a right-to-left book
+    if(mode==='slide'){
+      var ms = d ? Math.max(140, Math.min(300, 300*(1-Math.abs(d.dx)/W))) : 300;
+      if(!d){ setX(next, -dir*W, 0); next.getBoundingClientRect(); }
+      setX(next, 0, ms); setX(old, dir*W, ms); retire(old, ms);
+    } else if(mode==='fade'){
+      setX(next, 0, 0); next.style.opacity=0; setX(old, 0, 0); next.getBoundingClientRect();
+      next.style.transition='opacity 220ms ease'; old.style.transition='opacity 220ms ease';
+      next.style.opacity=1; old.style.opacity=0; retire(old, 220);
+    } else { setX(next, 0, 0); next.style.opacity=''; if(old) old.remove(); }
+    // anything still sliding out from an earlier quick turn is dropped
+    Array.prototype.forEach.call(stage.querySelectorAll('.spread'), function(el){ if(el!==cur && el!==old && !el.classList.contains('gone')) el.remove(); });
+    if(old && !opts.instant) buzz();
+  }
+  warm(ps[ps.length-1]+1); warm(ps[ps.length-1]+2); warm(ps[0]-1);
+  updateChrome();
+}
+function step(dir){ var t=target(dir); if(t) go(t); }
+function updateChrome(){
+  var ps=pagesFor(page);
+  var names=[]; ps.forEach(function(q){ surahsOn(q).forEach(function(s){ if(names.indexOf(s.ar)<0) names.push(s.ar); }); });
+  // three or more (the last pages, or a spread) don't fit beside the buttons: first and last
+  $('hSurah').textContent = names.length>2 ? names[0]+' – '+names[names.length-1] : names.join(' · ');
+  var h=hizbOf(ps[0]);
+  $('hMeta').textContent = 'الحزب '+h[0]+' · الجزء '+h[2]+' · الصفحة '+ps.join('–');
+  slider.value=page; pageBox.value=ps.join('–');
+  var marked = ps.some(function(q){ return bookmarks.indexOf(q)>=0; });
+  $('bmBtn').classList.toggle('on', marked);
+  $('bmPath').setAttribute('fill', marked?'currentColor':'none');
+  $('bmBtn').setAttribute('aria-label', marked?'إزالة العلامة':'ضع علامة على هذه الصفحة');
+  if(drawerOpen) renderIndex();
+}
+
+/* ---------- controls: shown, then fade while reading ---------- */
+var calmTimer;
+function showUI(ms){ document.body.classList.remove('calm'); clearTimeout(calmTimer);
+  calmTimer=setTimeout(function(){ if(!drawerOpen && !document.activeElement.matches('input')) document.body.classList.add('calm'); }, ms||3000); }
+function hideUI(){ clearTimeout(calmTimer); document.body.classList.add('calm'); }
+function toggleUI(){ if(document.body.classList.contains('calm')) showUI(4000); else hideUI(); }
+['topbar','bottombar'].forEach(function(id){ $(id).addEventListener('pointerdown', function(){ showUI(4000); }); });
+document.addEventListener('mousemove', function(e){ if(e.clientY<90 || e.clientY>innerHeight-90) showUI(2500); });
+
+/* ---------- full screen ---------- */
+var root=document.documentElement;
+var fsSupported = !!(root.requestFullscreen || root.webkitRequestFullscreen);
+var fsWanted = true;     // full screen by default; leaving it (Esc) turns this off until the button is used
+function inFs(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function enterFs(){ var f = root.requestFullscreen || root.webkitRequestFullscreen; if(!f) return;
+  try{ var r=f.call(root,{navigationUI:'hide'}); if(r&&r.catch) r.catch(function(){}); }catch(e){} }
+function exitFs(){ var f = document.exitFullscreen || document.webkitExitFullscreen; if(f){ try{ var r=f.call(document); if(r&&r.catch) r.catch(function(){}); }catch(e){} } }
+function fsIcon(){ $('fsIco').innerHTML = inFs()
+  ? '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>'
+  : '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>';
+  $('fsBtn').setAttribute('aria-label', inFs()?'الخروج من ملء الشاشة':'ملء الشاشة'); }
+function toggleFs(){ if(inFs()){ fsWanted=false; exitFs(); } else { fsWanted=true; enterFs(); } }
+var wasFs=false;
+['fullscreenchange','webkitfullscreenchange'].forEach(function(ev){ document.addEventListener(ev, function(){
+  if(wasFs && !inFs()) fsWanted=false; wasFs=inFs(); fsIcon(); setTimeout(function(){ go(page,true); },60); }); });
+if(!fsSupported) $('fsBtn').hidden=true;
+// browsers only allow full screen after a tap or key press, so the first one turns it on
+function firstTouch(){ if(fsWanted && fsSupported && !inFs()) enterFs(); dismissHint(); }
+// on lift, not touch-down: switching to full screen mid-touch cancels that touch, which ate the first swipe
+['pointerup','touchend','click'].forEach(function(ev){ document.addEventListener(ev, firstTouch, true); });
+document.addEventListener('keydown', function(e){ if(e.key!=='Escape' && e.key!=='F11') firstTouch(); }, true);
+
+var hint=$('hint');
+function dismissHint(){ if(!hint.hidden){ hint.classList.add('fade'); setTimeout(function(){ hint.hidden=true; },300); } }
+
+/* ---------- tapping and swiping the page ---------- */
+// swipe right = forward, as in a right-to-left book; with the slide animation the pages follow the finger
+var drag=null;
+function zoomed(){ return !!(window.visualViewport && visualViewport.scale>1.01); }
+if(window.visualViewport) visualViewport.addEventListener('resize', function(){ stage.classList.toggle('zoomed', zoomed()); });
+stage.addEventListener('pointerdown', function(e){
+  if(e.button>0 || drag || zoomed()) return;
+  drag={id:e.pointerId, x0:e.clientX, y0:e.clientY, t0:Date.now(), dx:0, axis:null, dir:0, el:null};
+});
+stage.addEventListener('pointermove', function(e){
+  if(!drag || e.pointerId!==drag.id) return;
+  var dx=e.clientX-drag.x0, dy=e.clientY-drag.y0;
+  if(!drag.axis){
+    if(Math.abs(dx)<10 && Math.abs(dy)<10) return;
+    drag.axis = Math.abs(dx) > Math.abs(dy)*1.2 ? 'x' : 'y';
+    if(drag.axis==='x'){ try{ stage.setPointerCapture(e.pointerId); }catch(_){} dismissHint(); }
+  }
+  if(drag.axis!=='x') return;
+  drag.dx=dx;
+  if(animMode!=='slide') return;
+  var dir = dx>0 ? 1 : -1, W = stage.clientWidth, t = target(dir);
+  if(dir!==drag.dir){ if(drag.el){ drag.el.remove(); drag.el=null; } drag.dir=dir;
+    if(t){ drag.el=buildSpread(pagesFor(t)); stage.appendChild(drag.el); } }
+  var x = t ? dx : dx*0.25;                      // at either end the page only gives a little
+  setX(cur, x, 0); if(drag.el) setX(drag.el, x - dir*W, 0);
+});
+function endDrag(e, cancelled){
+  if(!drag || e.pointerId!==drag.id) return;
+  var d=drag; drag=null;
+  if(d.axis==='x'){
+    var W=stage.clientWidth, v=d.dx/Math.max(1,Date.now()-d.t0), dir=d.dx>0?1:-1, t=target(dir);
+    var commit = !cancelled && t && (Math.abs(d.dx)>W*0.18 || (Math.abs(d.dx)>30 && Math.abs(v)>0.3));
+    if(commit){ go(t, {drag:d}); return; }
+    setX(cur, 0, 220);
+    if(d.el){ var el=d.el; setX(el, -d.dir*W, 220); retire(el, 220); }
+    return;
+  }
+  if(d.axis || cancelled) return;
+  var x=e.clientX/innerWidth;                    // a tap: sides turn the page, the middle shows the controls
+  if(x<0.3) step(1); else if(x>0.7) step(-1); else toggleUI();
+}
+stage.addEventListener('pointerup', function(e){ endDrag(e,false); });
+stage.addEventListener('pointercancel', function(e){ endDrag(e,true); });
+
+/* ---------- page-turn animation and vibration ---------- */
+var animMode = store.get('anim', matchMedia('(prefers-reduced-motion: reduce)').matches ? 'none' : 'slide');
+function setAnim(m){ animMode = ['slide','fade','none'].indexOf(m)>=0 ? m : 'slide'; store.set('anim',animMode);
+  Array.prototype.forEach.call($('animSeg').children, function(b){ b.setAttribute('aria-pressed', String(b.dataset.anim===animMode)); }); }
+Array.prototype.forEach.call($('animSeg').children, function(b){ b.onclick=function(){ setAnim(b.dataset.anim); }; });
+// 12 ms (the first version) is shorter than many phone motors can start, so nothing was felt
+var buzzOn = store.get('buzz', false), buzzMs = store.get('buzzMs', 40), canBuzz = typeof navigator.vibrate==='function';
+function buzzUi(){ var b=$('buzzBtn'); b.textContent = !canBuzz ? 'غير مدعوم' : buzzOn ? 'مفعّل' : 'متوقف';
+  b.setAttribute('aria-pressed', String(buzzOn && canBuzz)); b.disabled=!canBuzz;
+  $('buzzSeg').hidden = !(buzzOn && canBuzz);
+  Array.prototype.forEach.call($('buzzSeg').children, function(x){ x.setAttribute('aria-pressed', String(+x.dataset.ms===buzzMs)); });
+  if(!canBuzz) $('buzzNote').textContent='هذا الجهاز أو المتصفح لا يدعم الاهتزاز (مثل iPhone)'; }
+function buzz(){
+  if(!buzzOn || !canBuzz) return;
+  var okv=false; try{ okv=navigator.vibrate(buzzMs); }catch(_){}
+  // false means the browser refused (no tap on the page yet, or blocked); say so instead of failing silently
+  $('buzzNote').textContent = okv ? 'اهتزاز قصير مع كل صفحة. إن لم تشعر به فتحقق من إعدادات الاهتزاز في الهاتف'
+                                  : 'رفض المتصفح الاهتزاز. اضغط على الصفحة مرة ثم حاول مجدداً';
+}
+$('buzzBtn').onclick=function(){ buzzOn=!buzzOn; store.set('buzz',buzzOn); buzzUi(); buzz(); };
+Array.prototype.forEach.call($('buzzSeg').children, function(x){ x.onclick=function(){ buzzMs=+x.dataset.ms; store.set('buzzMs',buzzMs); buzzUi(); buzz(); }; });
+setAnim(animMode); buzzUi();
+
+/* ---------- version (version.js, raised on every commit) ---------- */
+$('verNo').textContent = self.APP_VERSION || '–';
+$('verDate').textContent = self.APP_DATE ? 'تاريخ الإصدار '+self.APP_DATE : '';
+
+/* ---------- bookmarks ---------- */
+var toastTimer;
+function toast(t){ var el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(function(){ el.classList.remove('show'); },1600); }
+function toggleBookmark(){
+  var ps=pagesFor(page), has=null; ps.forEach(function(q){ if(bookmarks.indexOf(q)>=0) has=q; });
+  if(has){ bookmarks=bookmarks.filter(function(q){ return q!==has; }); toast('أُزيلت العلامة'); }
+  else { bookmarks.push(page); bookmarks.sort(function(a,b){ return a-b; }); toast('وُضعت علامة على الصفحة '+page); }
+  store.set('bookmarks', bookmarks); updateChrome();
+}
+$('bmBtn').onclick=toggleBookmark;
+
+/* ---------- reading positions: daily portion / learning ---------- */
+var TRACK_ICO = {
+  daily:'<path d="M3 5.5c2.6-1 5.6-.8 9 1.2 3.4-2 6.4-2.2 9-1.2v13c-2.6-1-5.6-.8-9 1.2-3.4-2-6.4-2.2-9-1.2z"/><path d="M12 6.7v13"/>',
+  learn:'<path d="M2 9.5l10-5 10 5-10 5z"/><path d="M6 11.5v4.8c3.2 2.6 8.8 2.6 12 0v-4.8"/><path d="M22 9.5v5"/>'};
+function trackUi(){
+  var other = track==='daily' ? 'learn' : 'daily';
+  $('trackIco').innerHTML = TRACK_ICO[track];
+  $('trackBtn').classList.toggle('on', track==='learn');
+  $('trackBtn').setAttribute('aria-label', 'الموضع: '+TRACKS[track]+'. التبديل إلى '+TRACKS[other]);
+}
+function setTrack(t){
+  if(t===track) return;
+  pos[track]=page; track=t; store.set('track',track); store.set('pos',pos); trackUi();
+  markJump(pos[track]||1); go(pos[track]||1); toast(TRACKS[track]+' · الصفحة '+page);
+}
+function toggleTrack(){ setTrack(track==='daily' ? 'learn' : 'daily'); }
+$('trackBtn').onclick=toggleTrack;
+trackUi();
+
+/* ---------- index ---------- */
+function item(no, title, sub, ar, cur, onclick){
+  var b=document.createElement('button'); b.className='item'+(cur?' cur':'');
+  var n=document.createElement('span'); n.className='no'; var ns=document.createElement('span'); ns.textContent=no; n.appendChild(ns);
+  var mid=document.createElement('span'); var t=document.createElement('div'); t.className='t'; t.textContent=title; var s=document.createElement('div'); s.className='sub'; s.textContent=sub; mid.append(t,s);
+  var a=document.createElement('span'); a.className='ar'; a.textContent=ar||'';
+  b.append(n,mid,a); b.onclick=onclick; return b;
+}
+function renderIndex(){
+  var ps=pagesFor(page);
+  var sl=$('surahList'); sl.innerHTML='';
+  var onPage=[]; ps.forEach(function(q){ surahsOn(q).forEach(function(x){ onPage.push(x.n); }); });
+  SURAHS.forEach(function(s){ sl.appendChild(item(s.n, 'سورة '+s.ar, ayat(s.verses)+' · الصفحة '+s.page, '', onPage.indexOf(s.n)>=0, function(){ jump(s.page); closeIndex(); })); });
+  var hl=$('hizbList'); hl.innerHTML=''; var curH=hizbOf(ps[0])[0];
+  HIZB.forEach(function(h){ var v=firstVerse(h[1]);
+    hl.appendChild(item(h[0], 'الحزب '+h[0], 'الجزء '+h[2]+' · يبدأ في الصفحة '+h[1], '', h[0]===curH, function(){ jump(h[1]); closeIndex(); })); });
+  var tl=$('trackList'); tl.innerHTML='';
+  ['daily','learn'].forEach(function(t){ var p = t===track ? page : (pos[t]||1), s=surahOn(p);
+    var row=item('', TRACKS[t], 'الصفحة '+p+' من '+N+' · سورة '+s.ar+(t===track?' · الحالي':''), '', t===track, function(){ setTrack(t); closeIndex(); });
+    row.querySelector('.no').innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-45deg)">'+TRACK_ICO[t]+'</svg>';
+    tl.appendChild(row); });
+  var bl=$('bmList'); bl.innerHTML='';
+  if(!bookmarks.length){ var e=document.createElement('div'); e.className='empty'; e.textContent='لا توجد علامات بعد. استخدم زر العلامة في الأعلى، أو اضغط B.'; bl.appendChild(e); }
+  bookmarks.forEach(function(p){
+    var v=firstVerse(p), w=lastVerse(p), s=surahOn(p);
+    var row=item('', 'الصفحة '+p, 'سورة '+s.ar+' · '+(v[0]===w[0] ? 'الآيات '+v[1]+(w[1]!==v[1]?'–'+w[1]:'') : 'من الآية '+v[1]), '', ps.indexOf(p)>=0, function(){ jump(p); closeIndex(); });
+    row.querySelector('.no span').textContent='★';
+    var x=document.createElement('button'); x.className='iconbtn x'; x.setAttribute('aria-label','إزالة علامة الصفحة '+p);
+    x.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+    x.onclick=function(ev){ ev.stopPropagation(); bookmarks=bookmarks.filter(function(q){ return q!==p; }); store.set('bookmarks',bookmarks); updateChrome(); renderIndex(); };
+    var wrap=document.createElement('div'); wrap.style.cssText='display:flex;align-items:center;padding-left:8px';
+    row.style.flex='1'; wrap.append(row,x); bl.appendChild(wrap);
+  });
+}
+function showTab(t){
+  t = t==='set' ? 'set' : 'idx';
+  $('paneIdx').hidden = t!=='idx'; $('paneSet').hidden = t!=='set';
+  $('tabIdx').setAttribute('aria-selected', String(t==='idx')); $('tabSet').setAttribute('aria-selected', String(t==='set'));
+  $('dbody').scrollTop=0;
+}
+$('tabIdx').onclick=function(){ showTab('idx'); }; $('tabSet').onclick=function(){ showTab('set'); };
+// fromPop: called by the back/forward buttons, so the history entry is already handled
+function openIndex(tab, fromPop){ showTab(tab); if(drawerOpen) return;
+  drawerOpen=true; renderIndex(); $('scrim').hidden=false; $('drawer').setAttribute('aria-hidden','false');
+  requestAnimationFrame(function(){ if(drawerOpen) $('drawer').classList.add('show'); }); showUI();
+  if(!fromPop) history.pushState({app:1, p:page, t:track, panel:1}, ''); }
+function closeIndex(fromPop){
+  if(!drawerOpen) return;
+  if(!fromPop && history.state && history.state.panel){ history.back(); return; }   // popstate closes it
+  drawerOpen=false; $('drawer').classList.remove('show'); $('drawer').setAttribute('aria-hidden','true'); $('scrim').hidden=true;
+  $('gotoMsg').classList.remove('bad'); $('gotoMsg').textContent='ترقيم الآيات حسب العدّ المدني الأخير (رواية ورش).'; showUI(1500); }
+$('menuBtn').onclick=function(){ openIndex('idx'); }; $('closeBtn').onclick=function(){ closeIndex(); }; $('scrim').onclick=function(){ closeIndex(); };
+
+/* ---------- back button: closes the panel, then steps back through jumps ----------
+   Every history entry holds a page and a reading position. Turning pages updates the current entry;
+   a jump (index, verse, slider, page box, position switch) adds one, so back returns to where you were. */
+function markJump(p){
+  var st={app:1, p:p, t:track};
+  if(history.state && history.state.panel) history.replaceState(st, '');   // the panel's entry becomes the jump
+  else history.pushState(st, '');
+}
+function jump(p){ p=Math.max(1, Math.min(N, parseInt(p,10)||1)); if(p!==page) markJump(p); go(p); }
+addEventListener('popstate', function(e){
+  var st=e.state; if(!st || !st.app) return;
+  if(st.panel){ if(!drawerOpen) openIndex('idx', true); return; }
+  if(drawerOpen) closeIndex(true);
+  if(st.t && st.t!==track){ pos[track]=page; track=st.t; store.set('track',track); store.set('pos',pos); trackUi(); }
+  if(st.p && st.p!==page) go(st.p);
+});
+$('gotoForm').onsubmit=function(e){
+  e.preventDefault(); var q=$('gotoInput').value.trim().replace(/\s+/g,''), msg=$('gotoMsg');
+  var m=q.match(/^(\d+)[:.,/-](\d+)$/);
+  if(m){ var s=+m[1], a=+m[2];
+    if(s<1||s>114){ msg.textContent='رقم السورة من 1 إلى 114.'; msg.classList.add('bad'); return; }
+    if(a<1||a>SURAHS[s-1].verses){ msg.textContent='عدد آيات سورة '+SURAHS[s-1].ar+' '+SURAHS[s-1].verses+'.'; msg.classList.add('bad'); return; }
+    var p=pageOfVerse(s,a); jump(p); $('gotoInput').value=''; closeIndex(); toast('سورة '+SURAHS[s-1].ar+'، الآية '+a+': الصفحة '+p); return; }
+  if(/^\d+$/.test(q) && +q>=1 && +q<=N){ jump(+q); $('gotoInput').value=''; closeIndex(); return; }
+  msg.textContent='اكتب رقم صفحة من 1 إلى '+N+'، أو آية مثل 2:255.'; msg.classList.add('bad');
+};
+
+/* ---------- other controls ---------- */
+$('nextBtn').onclick=function(){ step(1); }; $('prevBtn').onclick=function(){ step(-1); };
+slider.oninput=function(){ pageBox.value=slider.value; };
+slider.onchange=function(){ jump(slider.value); };
+pageBox.onfocus=function(){ pageBox.select(); showUI(8000); };
+pageBox.onkeydown=function(e){ if(e.key==='Enter'){ jump(pageBox.value); pageBox.blur(); } };
+pageBox.onblur=function(){ updateChrome(); showUI(); };
+/* ---------- reading tone: day / warm / night ---------- */
+var TONES=['day','warm','night','black'], TONE_LABEL={day:'نهاري',warm:'دافئ',night:'ليلي',black:'أسود'};
+var TONE_ICO={
+  day:'<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
+  warm:'<path d="M12 3c3 4 5 6.5 5 10a5 5 0 0 1-10 0c0-3.5 2-6 5-10z"/>',
+  night:'<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  black:'<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/>'};
+function setTone(t, quiet){
+  if(TONES.indexOf(t)<0) t='day';
+  root.dataset.tone=t; root.dataset.theme = (t==='night'||t==='black') ? 'dark' : 'light'; store.set('tone',t);
+  $('toneIco').innerHTML=TONE_ICO[t];
+  $('themeBtn').setAttribute('aria-label','وضع القراءة: '+TONE_LABEL[t]);
+  Array.prototype.forEach.call($('toneSeg').children, function(b){ b.setAttribute('aria-pressed', String(b.dataset.tone===t)); });
+  var mc=document.querySelector('meta[name=theme-color]'); if(mc) mc.content = t==='black' ? '#000000' : t==='night' ? '#0c1110' : '#1f5c48';
+  if(!quiet) toast('الوضع ال'+TONE_LABEL[t]);
+}
+function cycleTone(){ setTone(TONES[(TONES.indexOf(root.dataset.tone)+1)%TONES.length]); }
+$('themeBtn').onclick=cycleTone;
+Array.prototype.forEach.call($('toneSeg').children, function(b){ b.onclick=function(){ setTone(b.dataset.tone); }; });
+function setFit(f){
+  f = f==='fill' ? 'fill' : 'fit'; root.dataset.fit=f; store.set('fit',f);
+  Array.prototype.forEach.call($('fitSeg').children, function(b){ b.setAttribute('aria-pressed', String(b.dataset.fit===f)); });
+  $('fitNote').textContent = f==='fill' ? 'تُمدَّد الصفحة لتملأ الشاشة ويُخفى مفتاح ألوان التجويد أسفلها، فيبدو الخط أطول من أصله.' : 'تظهر الصفحة بأبعادها الأصلية.';
+}
+Array.prototype.forEach.call($('fitSeg').children, function(b){ b.onclick=function(){ setFit(b.dataset.fit); }; });
+function setBar(on){
+  if(on) delete root.dataset.nobar; else root.dataset.nobar='1';
+  store.set('bottomBar', on);
+  $('barBtn').textContent = on ? 'ظاهر' : 'مخفي'; $('barBtn').setAttribute('aria-pressed', String(on));
+  $('barNote').textContent = on ? 'أزرار التالية والسابقة وشريط الصفحات'
+                                : 'قلّب الصفحات بالسحب أو بالضغط على الجانبين، وانتقل إلى صفحة أو آية من الفهرس';
+}
+$('barBtn').onclick=function(){ setBar(root.dataset.nobar==='1'); };
+function setDim(v){ v=Math.max(50,Math.min(100,+v||100)); root.style.setProperty('--dim', v/100); $('dimRange').value=v; store.set('dim',v); }
+$('dimRange').oninput=function(){ setDim(this.value); };
+
+/* ---------- keep screen on ---------- */
+var wakeLock=null, wakePref=store.get('wake',true);
+function wakeUi(){ var b=$('wakeBtn'); b.textContent=wakePref?'مفعّل':'متوقف'; b.setAttribute('aria-pressed',String(wakePref));
+  if(!('wakeLock' in navigator)){ b.disabled=true; b.textContent='غير مدعوم'; } }
+function wakeAcquire(){ if(!wakePref||!('wakeLock' in navigator)||document.hidden||wakeLock) return;
+  navigator.wakeLock.request('screen').then(function(l){ wakeLock=l; l.addEventListener('release',function(){ wakeLock=null; }); }).catch(function(){}); }
+function wakeRelease(){ if(wakeLock){ wakeLock.release().catch(function(){}); wakeLock=null; } }
+$('wakeBtn').onclick=function(){ wakePref=!wakePref; store.set('wake',wakePref); wakeUi(); if(wakePref) wakeAcquire(); else wakeRelease(); };
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) wakeAcquire(); });
+['pointerdown','keydown'].forEach(function(ev){ document.addEventListener(ev, wakeAcquire); });
+wakeUi();
+
+/* ---------- orientation lock (works when installed or full screen) ---------- */
+var ORI=['auto','portrait','landscape'], ORI_LABEL={auto:'تلقائي',portrait:'عمودي',landscape:'أفقي'}, oriPref=store.get('ori','auto');
+function oriApply(){
+  $('oriBtn').textContent=ORI_LABEL[oriPref]||ORI_LABEL.auto;
+  var so=screen.orientation;
+  if(!so||!so.lock){ $('oriBtn').disabled=true; $('oriNote').textContent='غير مدعوم على هذا الجهاز'; return; }
+  if(oriPref==='auto'){ try{ so.unlock(); }catch(e){} $('oriNote').textContent='تدوير حر'; return; }
+  so.lock(oriPref).then(function(){ $('oriNote').textContent='مثبّت على الوضع ال'+ORI_LABEL[oriPref]; })
+    .catch(function(){ $('oriNote').textContent='يعمل في وضع ملء الشاشة أو في التطبيق المثبّت'; });
+}
+$('oriBtn').onclick=function(){ oriPref=ORI[(ORI.indexOf(oriPref)+1)%ORI.length]; store.set('ori',oriPref); oriApply(); };
+['fullscreenchange','webkitfullscreenchange'].forEach(function(ev){ document.addEventListener(ev, function(){ if(oriPref!=='auto') oriApply(); }); });
+
+/* ---------- install, offline download, updates ---------- */
+var installEvt=null, standalone=matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); installEvt=e; if(!standalone) $('installRow').hidden=false; });
+addEventListener('appinstalled', function(){ installEvt=null; $('installRow').hidden=true; toast('تم تثبيت التطبيق'); });
+$('installBtn').onclick=function(){ if(!installEvt) return; installEvt.prompt(); installEvt.userChoice.then(function(){ installEvt=null; $('installRow').hidden=true; }); };
+
+/* offline reading is optional: off by default, on keeps every page on the device (about 8 MB) */
+var PAGE_CACHE='warsh-pages-v2';   // same name as in sw.js
+var offOn=false, offReady=false;
+function offBtnUi(){ var b=$('offBtn'); b.textContent=offOn?'مفعّل':'متوقف'; b.setAttribute('aria-pressed',String(offOn)); b.disabled=!offReady; }
+function offUi(done,total){
+  var note=$('offNote'), m=$('offMeter');
+  if(!offOn){ note.textContent='الصفحات لا تُحفظ على الجهاز (التفعيل يحفظ المصحف كاملاً، نحو 105 ميغابايت)'; m.hidden=true; return; }
+  if(done>=total){ note.textContent='حُفظت جميع الصفحات ('+total+') على هذا الجهاز'; m.hidden=true; return; }
+  note.textContent='جارٍ حفظ الصفحات… '+done+' من '+total; m.hidden=false; $('offBar').style.width=Math.round(done/total*100)+'%';
+}
+function swPost(msg){ navigator.serviceWorker.ready.then(function(reg){ if(reg.active) reg.active.postMessage(msg); }); }
+function offStart(){
+  offUi(0,N);
+  // ask the browser to keep the pages instead of clearing them when space runs low
+  if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){});
+  swPost({type:'precache', pages:PAGES});
+}
+$('offBtn').onclick=function(){
+  offOn=!offOn; store.set('offline604',offOn); offBtnUi();
+  if(offOn) offStart();
+  else { swPost({type:'drop-pages'}); offUi(); toast('حُذفت الصفحات المحفوظة'); }
+};
+function showUpdate(w){ $('updateBanner').hidden=false; $('updateBtn').onclick=function(){ w.postMessage({type:'skip-waiting'}); }; }
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message', function(e){ var d=e.data||{}; if(d.type==='progress' && offOn) offUi(d.done,d.total); });
+  var hadController=!!navigator.serviceWorker.controller, refreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){ if(refreshing||!hadController) return; refreshing=true; location.reload(); });
+  addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js', {updateViaCache:'none'})   // releases change only version.js, so never take it from the HTTP cache
+     .then(function(reg){
+      function watch(w){ w.addEventListener('statechange', function(){ if(w.state==='installed' && navigator.serviceWorker.controller) showUpdate(w); }); }
+      if(reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting);
+      reg.addEventListener('updatefound', function(){ if(reg.installing) watch(reg.installing); });
+      setInterval(function(){ reg.update().catch(function(){}); }, 60*60*1000);
+    }).catch(function(){ $('offNote').textContent='القراءة دون اتصال غير متاحة في هذا المتصفح'; });
+    navigator.serviceWorker.ready.then(function(){
+      // pages saved by an earlier version count as switched on
+      return caches.has(PAGE_CACHE).then(function(has){ offOn = store.get('offline604', has); });
+    }).catch(function(){}).then(function(){
+      offReady=true; offBtnUi();
+      if(offOn) offStart(); else offUi();
+    });
+  });
+} else { $('offNote').textContent='القراءة دون اتصال غير متاحة في هذا المتصفح'; }
+
+$('fsBtn').onclick=toggleFs;
+document.addEventListener('keydown', function(e){
+  if(e.target.matches('input')){ if(e.key==='Escape'){ e.target.blur(); } return; }
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  if(e.key==='Escape' && drawerOpen){ closeIndex(); return; }
+  if(drawerOpen) return;
+  var k=e.key.toLowerCase();
+  if(k==='arrowleft'||k==='pagedown'||k===' '){ e.preventDefault(); step(1); }
+  else if(k==='arrowright'||k==='pageup'){ e.preventDefault(); step(-1); }
+  else if(k==='home'){ jump(1); } else if(k==='end'){ jump(N); }
+  else if(k==='f'){ toggleFs(); }
+  else if(k==='n'){ cycleTone(); showUI(); }
+  else if(k==='z'){ setFit(root.dataset.fit==='fill'?'fit':'fill'); toast(root.dataset.fit==='fill'?'ملء الشاشة':'ملاءمة الصفحة'); }
+  else if(k==='b'){ toggleBookmark(); showUI(); }
+  else if(k==='t'){ toggleTrack(); showUI(); }
+  else if(k==='i'||k==='/'){ e.preventDefault(); openIndex('idx'); }
+  else if(k==='s'){ e.preventDefault(); openIndex('set'); }
+});
+var rz; addEventListener('resize', function(){ clearTimeout(rz); rz=setTimeout(function(){ if(cur) cur.remove(); cur=null; go(page,true); },120); });
+
+/* ---------- start ---------- */
+(function(){
+  var t=store.get('tone',null); if(!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
+  setTone(t,true); setBar(store.get('bottomBar',true)); setFit(store.get('fit','fit')); setDim(store.get('dim',100)); oriApply();
+  var q=new URLSearchParams(location.search), qp=parseInt(q.get('page'),10);
+  go(qp>=1 ? qp : (pos[track]||1), true);
+  history.replaceState({app:1, p:page, t:track}, '');
+  if(q.get('open')==='bookmarks'){ openIndex('idx'); setTimeout(function(){ $('bmList').scrollIntoView(); },300); }
+  hint.innerHTML = (fsSupported ? '<b>اضغط في أي مكان للقراءة بملء الشاشة</b>' : '<b>بسم الله</b>') +
+    'اسحب أو اضغط على الجانبين لتقليب الصفحات، وعلى الوسط لإظهار الأزرار.';
+  hint.hidden=false; setTimeout(dismissHint, 6000);
+  showUI(3500);
+})();
+</script>
+</body>
+</html>

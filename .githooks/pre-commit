@@ -1,0 +1,12 @@
+#!/bin/sh
+# Raise the app version by one with every commit. The new number shows in the settings,
+# and because sw.js imports version.js, installed copies see an update and offer to reload.
+# Enable once per clone:  git config core.hooksPath .githooks
+f=version.js
+[ -f "$f" ] || exit 0
+n=$(sed -n 's/^self\.APP_VERSION = \([0-9][0-9]*\);$/\1/p' "$f")
+[ -n "$n" ] || { echo "pre-commit: could not read APP_VERSION from $f" >&2; exit 1; }
+n=$((n + 1))
+d=$(date -u +%Y-%m-%d)
+sed -i.bak -e "s/^self\.APP_VERSION = [0-9][0-9]*;$/self.APP_VERSION = $n;/" -e "s/^self\.APP_DATE = \".*\";$/self.APP_DATE = \"$d\";/" "$f" && rm -f "$f.bak"
+git add "$f"
