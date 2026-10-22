@@ -209,7 +209,11 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
 .mlive{font-family:var(--f-ar);font-size:17px;line-height:1.6;color:var(--muted);direction:rtl;min-height:0;max-height:3.3em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
 .mlive:empty{display:none}
 .msum{font-size:14px;font-weight:600}
-.mout{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;border-top:1px solid var(--line);padding-top:6px}
+.mbar{margin:0}
+@keyframes mkflash{50%{background:rgba(214,160,40,.45);box-shadow:inset 0 0 0 max(2px,.4cqh) rgba(214,160,40,.95)}}
+.mk.flash{animation:mkflash .45s ease-in-out 3}
+.mk.anchor{box-shadow:inset 0 0 0 max(2px,.4cqh) rgba(214,160,40,.95)}
+.mout{position:relative;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;border-top:1px solid var(--line);padding-top:6px}
 .mout:empty{display:none}
 .mline{display:flex;gap:8px;align-items:baseline;padding:2px 0}
 .mline > i{font-style:normal;font-size:11px;color:var(--muted);width:1.8em;flex:none;text-align:center;font-variant-numeric:tabular-nums}
@@ -220,6 +224,13 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
 .w.unsure{color:var(--muted);text-decoration:underline dotted;text-underline-offset:6px}
 .w small{font:12px var(--f-ui);color:inherit;opacity:.85;margin-right:3px;text-decoration:none;display:inline-block}
 .w.extra{background:rgba(120,70,190,.15);color:#7046be;font-size:.8em}
+.w.fixed{background:var(--green-soft);color:var(--green);text-decoration:none}
+.w.todo{opacity:.4}
+.w[role=button]{cursor:pointer}
+.w.pick{outline:2px solid var(--accent);outline-offset:1px}
+.mpick{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;padding:6px 0;margin-bottom:4px;
+  background:var(--surface);border-bottom:1px solid var(--line);font-size:14px}
+.mpick .pill{padding:6px 12px}
 .vno{color:var(--green);font-size:.75em;margin:0 2px}
 .mkey{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);padding-top:4px}
 .mkey .w{font:inherit}
@@ -287,9 +298,11 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
   <div class="mact">
     <button class="pill primary" id="memRead">اقرأ من المصحف</button>
     <button class="pill primary" id="memRecite">سمّع من حفظك</button>
+    <button class="pill" id="memRetry" title="سمّع الأسطر التي فيها أخطاء فقط">أسطر الأخطاء</button>
     <button class="pill" id="memAll">الصفحة كاملة</button>
     <button class="pill rec" id="memStop" hidden>إنهاء</button>
   </div>
+  <div class="meter mbar" id="memMeter" hidden><i id="memBar"></i></div>
   <div class="mlive" id="memLive"></div>
   <div class="mout" id="memOut"></div>
 </section>
@@ -714,8 +727,14 @@ $('gotoForm').onsubmit=function(e){
    word by word with the printed text, and the reading passes show how the recognizer writes this reader's
    correct reading, so its own habits and slips are not counted as mistakes. */
 var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-var memOn=false, memP=0, memSel=null, memAnchor=0, memPhase='', memResult=null;   // memPhase: '' | 'read' | 'recite'
-var memPasses = store.get('memPasses', {});   // "page:from-to" -> what was heard in the reading passes (latest 5)
+// memSel: the chosen lines; memPhase: '' | 'read' | 'recite' | 'wait' (between readings); memPick: the result word tapped
+var memOn=false, memP=0, memSel=null, memAnchor=0, memPhase='', memResult=null, memPick=null;
+// reading passes per page, {l: lines read, t: what was heard}; a pass counts for every line it took in
+var memReads = store.get('memReads', null);
+if(!memReads){ memReads={}; var oldPasses=store.get('memPasses', {});   // the first version kept them per "page:from-to"
+  Object.keys(oldPasses).forEach(function(k){ var m=k.match(/^(\d+):(\d+)-(\d+)$/); if(m) oldPasses[k].forEach(function(t){
+    (memReads[m[1]]=memReads[m[1]]||[]).push({l:memRange(+m[2],+m[3]), t:t}); }); }); }
+var memAccept = store.get('memAccept', {});   // "page:line:word" -> how the recognizer heard it when the reader said it was right ('' dropped)
 
 /* words as plain letters: diacritics dropped and the hamza and alif forms folded, so neither the spelling
    nor how the recognizer writes a hamza (يؤمنون / يومنون) makes a difference */
@@ -754,45 +773,67 @@ function memAlign(ref, hyp){
   got.pop(); return {got:got, ext:ext};
 }
 function memHeard(ref, text){ var A=memAlign(ref, memHyp(text, ref)); return ref.map(function(w,i){ return A.got[i]!=null && near(w, A.got[i]); }); }
+// what the saved reading passes heard at each word of ref (tokens from memRef): for every pass on this page that
+// took in the word's line, the word it was matched with (got, null when missed) and the words added before it (ext)
+function memObs(ref){
+  var obs={};
+  ref.forEach(function(tk){ if(tk.w) obs[tk.id]=[]; });
+  (memReads[memP]||[]).forEach(function(pass){
+    if(!ref.some(function(tk){ return pass.l.indexOf(tk.l)>=0; })) return;
+    var pr=memRef(memP, pass.l), pw=memRefWords(pr), A=memAlign(pw, memHyp(pass.t, pw)), wi=0;
+    pr.forEach(function(tk){ if(!tk.w) return; var i=wi++; if(obs[tk.id]) obs[tk.id].push({got:A.got[i], ext:A.ext[i]}); });
+  });
+  return ref.filter(function(tk){ return tk.w; }).map(function(tk){ return obs[tk.id]; });
+}
 // each word: ok, bad (another word, h: what was heard), miss (left out), or unsure (the recognizer also missed it
-// in most reading passes, so it can't tell); extra[i]: words added before word i
-function memGrade(ref, passes, text){
-  var A=memAlign(ref, memHyp(text, ref)), P=passes.map(function(t){ return memAlign(ref, memHyp(t, ref)); });
-  var words=ref.map(function(w,i){
-    var g=A.got[i];
+// in most reading passes, so it can't tell); extra[i]: words added before word i, as {w}
+function memGrade(ref, text){
+  var toks=ref.filter(function(tk){ return tk.w; }), W=toks.map(function(tk){ return tk.w; });
+  var A=memAlign(W, memHyp(text, W)), O=memObs(ref);
+  var words=W.map(function(w,i){
+    var g=A.got[i], P=O[i], acc=memAccept[toks[i].id]||[];
     if(g!=null && near(w,g)) return {k:'ok'};
-    // heard the way a reading pass heard it: that is how the recognizer writes this reader's correct reading
-    if(g!=null && P.some(function(p){ return p.got[i]!=null && near(p.got[i],g); })) return {k:'ok'};
-    var heard=P.filter(function(p){ return p.got[i]!=null && near(w,p.got[i]); }).length;
-    if(heard*2 < P.length) return {k:'unsure', h:g};
+    // heard the way a reading pass heard it, or the way the reader confirmed before: that is how the recognizer
+    // writes this reader's correct reading
+    if(g!=null && (P.some(function(o){ return o.got!=null && near(o.got,g); }) || acc.some(function(a){ return a && near(a,g); }))) return {k:'ok'};
+    var heard=P.filter(function(o){ return o.got!=null && near(w,o.got); }).length;
+    // a word the reader said was there although the recognizer dropped it can't be checked when dropped again
+    if(heard*2 < P.length || (g==null && acc.indexOf('')>=0)) return {k:'unsure', h:g};
     return g==null ? {k:'miss'} : {k:'bad', h:g};
   });
   // added words don't count when they repeat the words just before (going back to pick up the thread),
   // or when the recognizer added them at that place in a reading pass too
   var extra=A.ext.map(function(xs,i){ return xs.filter(function(x){
-    for(var k=Math.max(0,i-4); k<=Math.min(i,ref.length-1); k++) if(near(x,ref[k])) return false;
-    return !P.some(function(p){ return p.ext.slice(Math.max(0,i-1), i+2).some(function(e){ return e.some(function(y){ return near(x,y); }); }); });
-  }); });
+    for(var k=Math.max(0,i-4); k<=Math.min(i,W.length-1); k++) if(near(x,W[k])) return false;
+    return !O.slice(Math.max(0,i-1), i+2).some(function(P){ return P.some(function(o){ return o.ext.some(function(y){ return near(x,y); }); }); });
+  }).map(function(x){ return {w:x}; }); });
   return {words:words, extra:extra};
 }
 
 /* listening: the browser's speech recognition (Chrome sends the audio to Google, so it needs a connection).
-   Phones end a session at every pause, so a new one starts until «إنهاء»; what each one heard is kept. */
-var rec=null, recWant=false, recDone=[], recSess=[], recLive='', recEnd=null, recQuick=0, recTimer;
-function listen(onEnd){ recDone=[]; recSess=[]; recLive=''; recEnd=onEnd; recQuick=0; recWant=true; recOpen(); }
+   Phones end a session at every pause, so a new one starts until listening stops: at «إنهاء», after a silence
+   (quiet ms once something was heard, 15 s if nothing was; recQuiet tells), or when the caller stops it. What
+   each session heard is kept; onText gets the whole text heard so far whenever it changes. */
+var rec=null, recWant=false, recDone=[], recSess=[], recLive='', recEnd=null, recOnText=null, recQuick=0, recTimer, recWatch, recT0=0, recLast=0, recQuiet=false;
+function listen(onEnd, onText, quiet){
+  recDone=[]; recSess=[]; recLive=''; recEnd=onEnd; recOnText=onText; recQuick=0; recWant=true; recQuiet=false; recT0=recLast=Date.now();
+  clearInterval(recWatch);
+  recWatch=setInterval(function(){ if(recWant && (heardText() ? Date.now()-recLast > quiet : Date.now()-recT0 > 15000)){ recQuiet=true; recStop(); } }, 500);
+  recOpen();
+}
 function heardText(){ return recDone.concat(recSess, recLive ? [recLive] : []).join(' ').trim(); }
 function recOpen(){
   var r=new SR(), t0=Date.now(); rec=r;
   r.lang='ar-SA'; r.continuous=true; r.interimResults=true;
   r.onresult=function(e){
     if(rec!==r) return;
-    var fin=[], live='';
+    var fin=[], live='', was=heardText();
     for(var i=0;i<e.results.length;i++){ var t=e.results[i][0].transcript.trim(), last=fin[fin.length-1]; if(!t) continue;
       if(!e.results[i].isFinal) live+=' '+t;
       else if(last!=null && t.indexOf(last)===0) fin[fin.length-1]=t;   // Chrome on Android repeats earlier phrases in later ones
       else if(t!==last) fin.push(t); }
     recSess=fin; recLive=live.trim();
-    var w=heardText().split(/\s+/); $('memLive').textContent = w.length>14 ? '… '+w.slice(-14).join(' ') : w.join(' ');
+    var now=heardText(); if(now!==was){ recLast=Date.now(); if(recOnText) recOnText(now); }
   };
   r.onerror=function(e){
     if(rec!==r || e.error==='no-speech' || e.error==='aborted') return;
@@ -811,7 +852,7 @@ function recOpen(){
 function recStop(){ recWant=false; clearTimeout(recTimer);
   if(rec){ try{ rec.stop(); }catch(_){} recTimer=setTimeout(function(){ recFinish(); }, 2500); } else recFinish(); }
 function recFinish(err){
-  clearTimeout(recTimer); recWant=false;
+  clearTimeout(recTimer); clearInterval(recWatch); recWant=false; recOnText=null;
   var r=rec; rec=null; if(r){ try{ r.abort(); }catch(_){} }
   var f=recEnd; recEnd=null; if(f) f(heardText(), err);
 }
@@ -820,15 +861,32 @@ function recFinish(err){
 var MEM_ERR={mic:'لم يُسمح باستخدام الميكروفون. اسمح به لهذا الموقع من إعدادات المتصفح، ثم حاول مجدداً.',
   net:'تعذّر الوصول إلى خدمة التعرّف على الكلام. تحقّق من الاتصال بالإنترنت.',
   lang:'التعرّف على الكلام بالعربية غير متاح في هذا المتصفح.', other:'توقّف التعرّف على الكلام. حاول مجدداً.'};
+var MEM_READS=3;   // reading passes in a row before reciting
+var memNext=0, memEnding=0, memRaf=0, memLiveRef=null, memLiveText='';
 function memPages(){ return pagesFor(page).filter(function(q){ return TEXT[q]; }); }
-function memKey(){ return memP+':'+memSel[0]+'-'+memSel[1]; }
+function memRange(a,b){ var out=[]; for(var l=a;l<=b;l++) out.push(l); return out; }
 function times(k){ return k===1 ? 'مرة واحدة' : k===2 ? 'مرتين' : k+' مرات'; }
-// the chosen lines as tokens: words {l, t: as printed, w: plain} and verse markers {l, v}
-function memRef(){ var out=[];
-  for(var l=memSel[0]; l<=memSel[1]; l++) TEXT[memP].lines[l-1][2].split(' ').forEach(function(t){
-    out.push(/^\d+$/.test(t) ? {l:l, v:t} : {l:l, t:t, w:memNorm(t)}); });
+// "السطر 4" / "الأسطر 4–7، 9"
+function memLinesLabel(ls){ var parts=[], a=ls[0];
+  for(var i=1;i<=ls.length;i++) if(ls[i]!==ls[i-1]+1){ parts.push(a===ls[i-1] ? ''+a : a+'–'+ls[i-1]); a=ls[i]; }
+  return (ls.length===1 ? 'السطر ' : 'الأسطر ')+parts.join('، '); }
+// lines as tokens: words {l, t: as printed, w: plain, id: page:line:word} and verse markers {l, v}
+function memRef(p, ls){ var out=[];
+  ls.forEach(function(l){ var k=0; TEXT[p].lines[l-1][2].split(' ').forEach(function(t){
+    out.push(/^\d+$/.test(t) ? {l:l, v:t} : {l:l, t:t, w:memNorm(t), id:p+':'+l+':'+(k++)}); }); });
   return out; }
 function memRefWords(ref){ return ref.filter(function(x){ return x.w; }).map(function(x){ return x.w; }); }
+// times the chosen lines were read: the passes taking in each line, for the line read least
+function memCount(){ if(!memSel) return 0; var ps=memReads[memP]||[];
+  return Math.min.apply(null, memSel.map(function(l){ return ps.filter(function(x){ return x.l.indexOf(l)>=0; }).length; })); }
+// mistakes still standing after the reader's corrections: how many, and on which lines
+function memErrs(R){ var n=0, ls=[], wi=0, last=0;
+  function add(e, l){ if(e){ n+=e; if(ls.indexOf(l)<0) ls.push(l); } }
+  function open(xs){ return xs.filter(function(x){ return !x.fixed; }).length; }
+  R.ref.forEach(function(tk){ if(!tk.w) return; var i=wi++, r=R.g.words[i]; last=tk.l;
+    add((!r.fixed && (r.k==='bad' || r.k==='miss') ? 1 : 0) + open(R.g.extra[i]), tk.l); });
+  add(open(R.g.extra[wi]), last);
+  return {n:n, lines:ls.sort(function(a,b){ return a-b; })}; }
 function memSync(){   // after every page change
   var ps=memPages(); $('memBtn').hidden=!ps.length;
   if(!memOn) return;
@@ -847,8 +905,13 @@ function closeMem(fromPop){
   if(!fromPop && history.state && history.state.mem){ history.back(); return; }   // popstate closes it
   memCancel(); memOn=false; delete root.dataset.mem; $('mem').hidden=true; $('memBtn').classList.remove('on'); memMarks();
 }
-function memCancel(){ if(memPhase){ memPhase=''; recEnd=null; recFinish(); $('memLive').textContent=''; } }
-function memSetPage(p){ memCancel(); memP=p; memSel=null; memAnchor=0; memResult=null; memRender(); }
+function memCancel(){
+  clearTimeout(memNext); clearTimeout(memEnding); memEnding=0;
+  if(memPhase){ var listening=memPhase!=='wait'; memPhase=''; if(listening){ recEnd=null; recFinish(); } }
+  $('memLive').textContent=''; $('memMeter').hidden=true;
+}
+function memSelect(ls, note){ memCancel(); memSel=ls; memAnchor=0; memResult=null; memPick=null; memRender(note); }
+function memSetPage(p){ memP=p; memSelect(null); }
 // a tap on a line picks it; a tap on a second line takes everything between them
 function memTap(x, y){
   if(memPhase || !cur) return;
@@ -859,78 +922,141 @@ function memTap(x, y){
     TEXT[p].lines.forEach(function(L,i){ if(iy>=L[0] && iy<L[1]) l=i+1; });
     if(!l) return;
     if(p!==memP){ memP=p; memAnchor=0; }
-    if(memAnchor){ memSel=[Math.min(memAnchor,l), Math.max(memAnchor,l)]; memAnchor=0; }
-    else { memSel=[l,l]; memAnchor=l; }
-    memResult=null; memRender();
+    var a=memAnchor;
+    memSelect(a ? memRange(Math.min(a,l), Math.max(a,l)) : [l]);
+    if(!a){ memAnchor=l; memRender(); }
   });
 }
 function memMarks(){
+  var bad = memResult && memResult.kind==='recite' ? memErrs(memResult).lines : null;
   Array.prototype.forEach.call(stage.querySelectorAll('.mk'), function(m){
-    var l=+m.dataset.l+1, inSel = memOn && +m.parentNode.dataset.p===memP && memSel && l>=memSel[0] && l<=memSel[1];
-    var k = !inSel ? '' : memPhase==='recite' ? 'hide' : memResult && memResult.kind==='recite' ? (memResult.badLines.indexOf(l)>=0 ? 'bad' : 'good') : 'sel';
+    var l=+m.dataset.l+1, inSel = memOn && +m.parentNode.dataset.p===memP && memSel && memSel.indexOf(l)>=0;
+    var k = !inSel ? '' : memPhase==='recite' ? 'hide' : bad ? (bad.indexOf(l)>=0 ? 'bad' : 'good') : memAnchor===l ? 'sel anchor' : 'sel';
     m.className = 'mk'+(k ? ' '+k : '');
   });
 }
+function memFlash(l){
+  var m=stage.querySelector('.pg[data-p="'+memP+'"] .mk[data-l="'+(l-1)+'"]'); if(!m) return;
+  m.classList.remove('flash'); void m.offsetWidth; m.classList.add('flash');
+}
 function memRender(note, bad){
-  var n=TEXT[memP].lines.length, passes=memSel ? (memPasses[memKey()]||[]).length : 0, busy=!!memPhase;
-  $('memWhere').textContent=' · الصفحة '+memP+(memSel ? ' · '+(memSel[0]===memSel[1] ? 'السطر '+memSel[0] : 'الأسطر '+memSel[0]+'–'+memSel[1]) : '');
+  var n=TEXT[memP].lines.length, passes=memCount(), busy=!!memPhase, R=memResult, errs = R && R.kind==='recite' ? memErrs(R) : null;
+  $('memWhere').textContent=' · الصفحة '+memP+(memSel ? ' · '+memLinesLabel(memSel) : '');
   var pc=$('memPages'), ps=memPages(); pc.innerHTML='';
   if(ps.length>1) ps.forEach(function(q){ var b=document.createElement('button'); b.className='pill'; b.textContent='ص '+q;
     b.setAttribute('aria-pressed', String(q===memP)); b.disabled=busy; b.onclick=function(){ memSetPage(q); }; pc.appendChild(b); });
   $('memRead').hidden=$('memRecite').hidden=busy; $('memStop').hidden=!busy;
-  $('memAll').hidden = busy || !!(memSel && memSel[0]===1 && memSel[1]===n);
+  $('memStop').textContent = memPhase==='wait' ? 'إيقاف' : 'إنهاء';
+  $('memRetry').hidden = busy || !errs || !errs.n || errs.lines.join()===memSel.join();
+  $('memAll').hidden = busy || !!(memSel && memSel.length===n) || !$('memRetry').hidden;   // one row of buttons on a phone
   $('memForget').hidden = busy || !passes;
   $('memRead').disabled = !SR || !memSel; $('memRecite').disabled = !SR || !passes;
   $('memRead').textContent = passes ? 'اقرأ مرة أخرى' : 'اقرأ من المصحف';
-  $('memRecite').textContent = memResult && memResult.kind==='recite' ? 'سمّع مرة أخرى' : 'سمّع من حفظك';
+  $('memRecite').textContent = errs ? 'سمّع مرة أخرى' : 'سمّع من حفظك';
   var msg = note ? note
     : !SR ? 'التعرّف على الكلام غير متاح في هذا المتصفح. جرّب Chrome أو Edge أو Safari.'
-    : memPhase==='read' ? 'اقرأ الأسطر المحددة من المصحف بصوت واضح، ثم اضغط «إنهاء».'
-    : memPhase==='recite' ? 'سمّع الأسطر المخفية من حفظك، ثم اضغط «إنهاء».'
+    : memPhase==='read' ? 'القراءة '+(passes+1)+': اقرأ الأسطر المحددة من المصحف بصوت واضح. يتوقف الاستماع وحده بعد آخر كلمة.'
+    : memPhase==='recite' ? 'سمّع الأسطر المخفية من حفظك. يتوقف الاستماع وحده بعد آخر كلمة، أو بعد سكوت طويل.'
     : !memSel ? 'اضغط على سطر في الصفحة لتختاره، ثم على سطر آخر لتحديد ما بينهما، أو اختر الصفحة كاملة.'
-    : memResult && memResult.kind==='recite' ? 'الأسطر الحمراء في الصفحة فيها أخطاء.'
-    : !passes ? 'اقرأ هذه الأسطر من المصحف ليتعرّف التطبيق على قراءتك (يُستحسن 3 مرات)، ثم سمّعها من حفظك وستُخفى عنك.'
-    : 'قرأتها '+times(passes)+'. اقرأ مرة أخرى، أو سمّعها من حفظك وستُخفى عنك.';
+    : memAnchor && !R ? 'اضغط على سطر آخر لتحديد الأسطر بينهما، أو ابدأ بهذا السطر وحده.'
+    : errs ? (errs.n ? 'الأسطر الحمراء في الصفحة فيها أخطاء. اضغط على كلمة ملوّنة لترى ما سُمع.' : 'ما شاء الله. سمّع مرة أخرى، أو اختر أسطراً أخرى.')
+    : !passes ? 'اقرأ هذه الأسطر من المصحف '+times(MEM_READS)+' متتالية ليتعرّف التطبيق على قراءتك، ثم سمّعها من حفظك وستُخفى عنك.'
+    : 'قرأتها '+times(passes)+'. سمّعها الآن من حفظك وستُخفى عنك، أو اقرأ مرة أخرى.';
   $('memMsg').textContent=msg; $('memMsg').classList.toggle('bad', !!(bad || !SR));
   memOutRender(); memMarks();
 }
 function memOutRender(){
   var o=$('memOut'), R=memResult; o.innerHTML=''; if(!R) return;
   function el(tag, cls, text){ var e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+  function pickable(e, pick){
+    var same = memPick && memPick.join()===pick.join();
+    if(same) e.classList.add('pick');
+    e.setAttribute('role','button'); e.tabIndex=0;
+    e.onclick=function(){ memPick = same ? null : pick; if(memPick) memFlash(e.dataset.l); memOutRender(); };
+    e.onkeydown=function(ev){ if(ev.key==='Enter' || ev.key===' '){ ev.preventDefault(); e.onclick(); } };
+  }
   var sum=el('div','msum'); o.appendChild(sum);
-  var wi=0, line=null, at=0, nw=memRefWords(R.ref).length;
-  function extras(i){ if(R.kind==='recite') R.g.extra[i].forEach(function(x){ line.append(el('span','w extra','+'+x), ' '); }); }
+  var bar=null; if(R.kind==='recite' && memPick){ bar=el('div','mpick'); o.appendChild(bar); }
+  var wi=0, line=null, at=0, nw=memRefWords(R.ref).length, lastGot=null;
+  function extras(i){ if(R.kind==='recite') R.g.extra[i].forEach(function(x,j){
+    var e=el('span','w extra'+(x.fixed ? ' fixed' : ''),'+'+x.w); e.dataset.l=at; pickable(e, ['x',i,j]); line.append(e, ' '); }); }
   R.ref.forEach(function(tk){
     if(tk.l!==at){ at=tk.l; var row=el('div','mline'); line=el('span','mwords'); var no=el('i',null,at); no.title='السطر '+at; row.append(no, line); o.appendChild(row); }
     if(tk.v){ line.append(el('span','vno','﴿'+tk.v+'﴾'), ' '); return; }
     var i=wi++, w;
-    if(R.kind==='recite'){ extras(i); var r=R.g.words[i]; w=el('span','w '+r.k, tk.t); if(r.h && r.k!=='ok') w.appendChild(el('small',null,'('+r.h+')')); }
+    if(R.kind==='recite'){
+      extras(i); var r=R.g.words[i];
+      w=el('span','w '+r.k+(r.fixed ? ' fixed' : ''), tk.t); w.dataset.l=tk.l;
+      if(r.k!=='ok'){ if(r.h && !r.fixed) w.appendChild(el('small',null,'('+r.h+')')); pickable(w, ['w',i]); }
+    } else if(R.kind==='live'){ w=el('span', R.heard[i] ? 'w got' : 'w todo', tk.t); if(R.heard[i]) lastGot=w; }
     else w=el('span', R.heard[i] ? 'w' : 'w unsure', tk.t);
     line.append(w, ' ');
   });
   if(R.kind==='recite') extras(nw);
   var key=el('div','mkey');
   if(R.kind==='recite'){
-    var c={bad:0, miss:0, unsure:0}, ex=0; R.g.words.forEach(function(r){ if(c[r.k]!=null) c[r.k]++; });
-    R.g.extra.forEach(function(xs){ ex+=xs.length; });
-    var errs=c.bad+c.miss+ex;
-    sum.textContent = (errs ? 'الأخطاء: '+errs+' في '+nw+' كلمة' : 'ما شاء الله، لا أخطاء في '+nw+' كلمة')
-      + (c.unsure ? ' · '+c.unsure+' لم يُتحقَّق منها' : '');
-    key.append(el('span','w bad','كلمة خطأ'), el('span','w miss','كلمة ناقصة'), el('span','w extra','+ زائدة'), el('span','w unsure','لم يُتحقَّق منها'));
+    var errs=memErrs(R), unsure=R.g.words.filter(function(r){ return r.k==='unsure' && !r.fixed; }).length;
+    sum.textContent = (errs.n ? 'الأخطاء: '+errs.n+' في '+nw+' كلمة' : 'ما شاء الله، لا أخطاء في '+nw+' كلمة')
+      + (unsure ? ' · '+unsure+' لم يُتحقَّق منها' : '');
+    key.append(el('span','w bad','كلمة خطأ'), el('span','w miss','كلمة ناقصة'), el('span','w extra','+ زائدة'), el('span','w unsure','لم يُتحقَّق منها'), el('span','w fixed','صحّحتَها'));
+    if(bar) memPickBar(bar, el);
   } else {
     var got=R.heard.filter(Boolean).length;
-    sum.textContent = (R.failed ? 'لم تُحفظ: ' : 'القراءة '+R.n+': ')+'تعرّف التطبيق على '+got+' من '+nw+' كلمة';
-    if(got<nw) key.append(el('span','w unsure','لم يتعرّف عليها'));
+    sum.textContent = (R.kind==='live' ? 'القراءة '+R.n+': سُمعت ' : (R.failed ? 'لم تُحفظ: ' : 'القراءة '+R.n+': ')+'تعرّف التطبيق على ')+got+' من '+nw+' كلمة';
+    if(R.kind==='read' && got<nw) key.append(el('span','w unsure','لم يتعرّف عليها'));
   }
   if(key.childNodes.length) o.appendChild(key);
+  // keep the reading position in view while it moves down the lines
+  if(lastGot) o.scrollTop = Math.max(0, lastGot.offsetTop - o.clientHeight/2);
+}
+// the word or added word tapped in the results: what was heard, and the reader's correction
+function memPickBar(bar, el){
+  var R=memResult, P=memPick, act=null, text;
+  if(P[0]==='x'){ var x=R.g.extra[P[1]][P[2]];
+    text = x.fixed ? 'أزلتَ الكلمة الزائدة «'+x.w+'».' : 'سُمعت كلمة زائدة: «'+x.w+'».';
+    act = x.fixed ? ['تراجع', false] : ['لم أقلها', true];
+  } else { var r=R.g.words[P[1]], t=R.toks[P[1]].t;
+    if(r.fixed){ text='«'+t+'»: قبلتَها صحيحة.'; act=['تراجع', false]; }
+    else if(r.k==='bad'){ text='«'+t+'»: سُمعت «'+r.h+'».'; act=['قلتها صحيحة', true]; }
+    else if(r.k==='miss'){ text='«'+t+'»: لم تُسمع.'; act=['قلتها', true]; }
+    else text='«'+t+'»: لم يتعرّف عليها التطبيق في قراءاتك، فلا يمكن التحقق منها.';
+  }
+  bar.appendChild(el('span',null,text));
+  if(act){ var b=el('button','pill',act[0]); b.onclick=function(){ memFix(act[1]); }; bar.appendChild(b); }
+}
+// the reader says the recognizer got it wrong: the word counts as correct, and how it was heard (or that it was
+// dropped) is kept for that word, so the next recitations accept it too
+function memFix(on){
+  var R=memResult, P=memPick;
+  if(P[0]==='x') R.g.extra[P[1]][P[2]].fixed=on;
+  else { var r=R.g.words[P[1]], id=R.toks[P[1]].id, v=r.h||'', acc=memAccept[id]||[];
+    r.fixed=on;
+    acc = on ? acc.concat(acc.indexOf(v)<0 ? [v] : []) : acc.filter(function(a){ return a!==v; });
+    if(acc.length) memAccept[id]=acc; else delete memAccept[id];
+    store.set('memAccept', memAccept); }
+  memRender();
+}
+// while listening: the reading moves through the lines on the panel (reciting shows only how far it got, the
+// lines stay hidden), and listening stops once the last word is heard after most of the others
+function memOnText(text){ memLiveText=text; if(!memRaf) memRaf=requestAnimationFrame(memLiveUi); }
+function memLiveUi(){
+  memRaf=0; if(!memLiveRef || (memPhase!=='read' && memPhase!=='recite')) return;
+  var W=memRefWords(memLiveRef), n=W.length, hyp=memHyp(memLiveText, W), A=memAlign(W, hyp);
+  var heard=W.map(function(w,i){ return A.got[i]!=null && near(w, A.got[i]); }), got=heard.filter(Boolean).length;
+  $('memMeter').hidden=false; $('memBar').style.width=Math.round(got/n*100)+'%';
+  if(memPhase==='read'){ memResult={kind:'live', ref:memLiveRef, heard:heard, n:memCount()+1}; memOutRender(); }
+  else { var w=memLiveText.split(/\s+/); $('memLive').textContent = w.length>14 ? '… '+w.slice(-14).join(' ') : w.join(' '); }
+  if(!memEnding && heard[n-1] && hyp.length && near(hyp[hyp.length-1], W[n-1]) && got >= n*0.6)
+    memEnding=setTimeout(function(){ memEnding=0; recStop(); }, 900);   // a moment for the last words to settle
 }
 function memStart(kind){
   if(!SR || !memSel || memPhase) return;
   if(navigator.onLine===false){ memRender('التعرّف على الكلام يحتاج إلى اتصال بالإنترنت.', true); return; }
-  var key=memKey(), ref=memRef(), words=memRefWords(ref);
-  memPhase=kind; memResult=null; $('memLive').textContent=''; memRender();
+  var ref=memRef(memP, memSel), words=memRefWords(ref), p=memP, sel=memSel.slice();
+  memPhase=kind; memResult=null; memPick=null; memLiveRef=ref; memLiveText=''; clearTimeout(memEnding); memEnding=0;
+  $('memLive').textContent=''; $('memBar').style.width='0'; memRender();
   listen(function(text, err){
-    memPhase=''; $('memLive').textContent='';
+    memPhase=''; memLiveRef=null; clearTimeout(memEnding); memEnding=0; $('memLive').textContent=''; $('memMeter').hidden=true;
     if(err){ memRender(MEM_ERR[err], true); return; }
     if(!memWords(text).length){ memRender('لم يُسمع شيء. تحقّق من الميكروفون واقرأ بصوت أوضح.', true); return; }
     if(kind==='read'){
@@ -938,25 +1064,32 @@ function memStart(kind){
       // a pass that heard less than half the words (other lines, noise) would only blur the check
       if(got*2 < words.length){ memResult={kind:'read', ref:ref, heard:heard, failed:true};
         memRender('لم تُحفظ هذه القراءة لأن التطبيق لم يتعرّف على أكثر كلماتها. اقرأ الأسطر المحددة نفسها بصوت واضح.', true); return; }
-      var list=(memPasses[key]||[]).concat([text]).slice(-5); memPasses[key]=list; store.set('memPasses', memPasses);
-      memResult={kind:'read', ref:ref, heard:heard, n:list.length};
+      memReads[p]=(memReads[p]||[]).concat([{l:sel, t:text}]).slice(-40); store.set('memReads', memReads);
+      var n=memCount(); memResult={kind:'read', ref:ref, heard:heard, n:n};
+      // the next reading starts by itself until there are enough
+      if(n < MEM_READS){ memPhase='wait'; memRender('حُفظت القراءة '+n+' من '+MEM_READS+'. القراءة التالية تبدأ الآن…');
+        memNext=setTimeout(function(){ memPhase=''; memStart('read'); }, 1800); return; }
+      if(n === MEM_READS){ memRender('قرأتها '+times(n)+'. سمّعها الآن من حفظك، وستُخفى عنك.'); return; }
     } else {
-      var g=memGrade(words, memPasses[key]||[], text), bad=[], wi=0;
-      ref.forEach(function(tk){ if(!tk.w) return; var i=wi++;
-        if(g.words[i].k==='bad' || g.words[i].k==='miss' || g.extra[i].length) bad.push(tk.l); });
-      if(g.extra[words.length].length) bad.push(memSel[1]);
-      memResult={kind:'recite', ref:ref, g:g, badLines:bad};
+      var toks=ref.filter(function(tk){ return tk.w; });
+      memResult={kind:'recite', ref:ref, toks:toks, g:memGrade(ref, text)};
+      if(recQuiet && memErrs(memResult).n){ memRender('توقّف الاستماع بعد سكوت طويل، فعُدّت الكلمات التي لم تُسمع بعده ناقصة.'); return; }
     }
     memRender();
-  });
+  }, memOnText, kind==='read' ? 5000 : 8000);
 }
 $('memBtn').onclick=function(){ if(memOn) closeMem(); else openMem(); };
 $('memClose').onclick=function(){ closeMem(); };
 $('memRead').onclick=function(){ memStart('read'); };
 $('memRecite').onclick=function(){ memStart('recite'); };
-$('memStop').onclick=recStop;
-$('memAll').onclick=function(){ memSel=[1, TEXT[memP].lines.length]; memAnchor=0; memResult=null; memRender(); };
-$('memForget').onclick=function(){ delete memPasses[memKey()]; store.set('memPasses', memPasses); memResult=null; memRender('مُسحت القراءات المحفوظة لهذه الأسطر.'); };
+$('memStop').onclick=function(){ if(memPhase==='wait'){ memCancel(); memRender(); } else recStop(); };
+$('memAll').onclick=function(){ memSelect(memRange(1, TEXT[memP].lines.length)); };
+// practise the mistakes: the lines that had them become the selection; the passes read over them still count
+$('memRetry').onclick=function(){ var ls=memErrs(memResult).lines;
+  memSelect(ls, 'اخترتُ الأسطر التي فيها أخطاء ('+memLinesLabel(ls)+'). سمّعها مرة أخرى، أو اقرأها من المصحف أولاً.'); };
+$('memForget').onclick=function(){
+  memReads[memP]=(memReads[memP]||[]).filter(function(x){ return !x.l.some(function(l){ return memSel.indexOf(l)>=0; }); });
+  store.set('memReads', memReads); memResult=null; memPick=null; memRender('مُسحت القراءات المحفوظة لهذه الأسطر.'); };
 // leaving the app stops listening; what was heard so far is dropped
 document.addEventListener('visibilitychange', function(){ if(document.hidden && memPhase){ memCancel(); memRender('توقّف الاستماع لأن التطبيق لم يعد ظاهراً.', true); } });
 if(window.ResizeObserver) new ResizeObserver(function(){ root.style.setProperty('--memh', $('mem').offsetHeight+'px'); }).observe($('mem'));
