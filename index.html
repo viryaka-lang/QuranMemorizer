@@ -57,31 +57,27 @@ button{cursor:pointer}
 .spread{position:absolute;inset:0;display:flex;flex-direction:row;justify-content:center;align-items:center;container-type:size;
   padding:max(4px,env(safe-area-inset-top,0px)) max(4px,env(safe-area-inset-right,0px)) max(4px,env(safe-area-inset-bottom,0px)) max(4px,env(safe-area-inset-left,0px));
   will-change:transform}
-.pg{width:min(100cqw,100cqh*800/1242);aspect-ratio:800/1242;background:#fffcdb;box-shadow:var(--shadow);overflow:hidden;border-radius:3px;
-  display:flex;flex-direction:column;container-type:size;position:relative}
-.spread.two .pg{width:min(50cqw,100cqh*800/1242)}
+/* each page shows a window of its 1792x2560 image (the mushaf frame, or the whole page with the word meanings);
+   --r is the window's width/height, set per page from rectFor() */
+.pg{width:min(100cqw,100cqh*var(--r,.626));aspect-ratio:var(--r,.626);background:#fffcdb;box-shadow:var(--shadow);overflow:hidden;border-radius:3px;
+  container-type:size;position:relative}
+.spread.two .pg{width:min(50cqw,100cqh*var(--r,.626))}
 .spread.two .pg:first-child{border-radius:0 3px 3px 0}
 .spread.two .pg:last-child{border-radius:3px 0 0 3px}
 /* fill mode: the page is stretched to the whole screen instead of keeping its proportions */
 :root[data-fit="fill"] .spread{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
 :root[data-fit="fill"] .pg{aspect-ratio:auto;width:100cqw;height:100cqh;border-radius:0;box-shadow:none}
 :root[data-fit="fill"] .spread.two .pg{width:50cqw;border-radius:0}
-:root[data-fit="fill"] .pg img{object-fit:fill}
-/* pages 3-49 end in a tajweed colour legend below the frame (rows 1168-1242 of 1242): fill mode pushes it
-   off the bottom of the page so the stretched page ends at the frame */
-:root[data-fit="fill"] .pg.framed{--k:1.06336}
-:root[data-fit="fill"] .pg.framed img{height:calc(100% * var(--k));flex:none}
-.pg img{display:block;width:100%;height:100%;object-fit:contain;-webkit-user-drag:none;pointer-events:none;
+.pg img{position:absolute;display:block;max-width:none;object-fit:fill;-webkit-user-drag:none;pointer-events:none;
   filter:brightness(var(--dim,1));transition:filter .25s ease}
 /* reading tones: warm softens the white, night inverts the page and keeps the tajweed colours readable */
 :root[data-tone="warm"] .pg{background:#f3e7c9}
-/* page number drawn over the image: a label box like the printed «حزب» one, centred in the empty top margin
-   (positions measured on the 800x1242 pages); the two decorated opening pages use their bottom margin */
-.pno{position:absolute;left:44.4%;width:11.2%;top:calc(.4% * var(--k,1));height:calc(3% * var(--k,1));display:grid;place-items:center;
-  background:#fff;border:max(1px,.16cqh) solid #4a9e7e;color:#000;font:500 1.9cqh/1 Arial,"Helvetica Neue",Roboto,sans-serif;font-variant-numeric:lining-nums tabular-nums;
+/* fill mode cuts off the legend row with the printed page number, so the number is drawn over the empty top
+   row instead, as a box like the printed «حزب» label (placed per page in placeNumber()) */
+.pno{position:absolute;display:none;place-items:center;
+  background:#fff;border:max(1px,.12cqh) solid #1a9a4e;color:#000;font:700 1.9cqh/1 "Times New Roman",Times,serif;font-variant-numeric:lining-nums tabular-nums;
   filter:brightness(var(--dim,1));transition:filter .25s ease}
-.pno.low{top:94.2%}
-.pno.wide{left:54.4%}   /* pages 601-604: the three-surah label reaches the centre */
+:root[data-fit="fill"]:not([data-meanings]) .pg:not(.deco) .pno{display:grid}
 .pg .miss{position:absolute;left:10%;right:10%;top:45%;text-align:center;color:#5d6b63;font-size:14px;line-height:1.6}
 :root[data-tone="warm"] .pg img,:root[data-tone="warm"] .pno{filter:sepia(.4) saturate(.9) brightness(calc(var(--dim,1) * .96))}
 :root[data-tone="night"] .pg{background:#1e1c09}
@@ -256,6 +252,7 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
       <button data-fit="fit">ملاءمة الصفحة</button><button data-fit="fill">ملء الشاشة</button>
     </div>
     <div class="gomsg" id="fitNote"></div>
+    <div class="row2"><span>معاني الكلمات<small>عرض الصفحة كاملة مع هامش معاني الكلمات</small></span><button class="pill" id="meanBtn" aria-pressed="false">متوقف</button></div>
     <label class="dim">السطوع <input type="range" id="dimRange" min="50" max="100" value="100" aria-label="سطوع الصفحة"> </label>
     <div class="cap">حركة تقليب الصفحة</div>
     <div class="seg" id="animSeg" role="group" aria-label="حركة تقليب الصفحة">
@@ -292,7 +289,8 @@ var PAGES = []; for(var q=1; q<=N; q++) PAGES.push('pages/'+String(q).padStart(3
 function lastLE(arr, x, lo){ var a=lo||0, b=arr.length-1; while(a<b){ var m=(a+b+1)>>1; if(arr[m]<=x) a=m; else b=m-1; } return a; }
 var SURAH_START = M.surahs.map(function(x){ return x[0]; });
 function pageOfId(id){ return Math.max(1, Math.min(N, lastLE(M.pageStart, id, 1))); }
-var SURAHS = M.surahs.map(function(x,i){ return {n:i+1, ar:x[2], start:x[0], verses:x[1], page:pageOfId(x[0])}; });
+// a surah opens on the page with its heading, which for 21 surahs is the page before their first verse
+var SURAHS = M.surahs.map(function(x,i){ return {n:i+1, ar:x[2], start:x[0], verses:x[1], page:(M.headingPage||{})[i+1] || pageOfId(x[0])}; });
 var HIZB = M.hizb.map(function(pg,i){ return [i+1, pg, (i>>1)+1]; });   // [hizb, first page, juz]
 function ayat(n){ return n+' '+(n%100>=3&&n%100<=10 ? 'آيات' : 'آية'); }
 function verseOf(id){ var k=lastLE(SURAH_START, id); return [k+1, id-SURAH_START[k]+1]; }       // [surah, verse]
@@ -316,13 +314,34 @@ function twoUp(){ return matchMedia('(min-width: 900px) and (min-aspect-ratio: 5
 function pagesFor(p){ if(!twoUp()) return [p]; var a = p%2 ? p : p-1; return a+1<=N ? [a,a+1] : [a]; }
 
 /* ---------- pages ---------- */
+/* window of the 1792x2560 page image to show: [x, y, width, height] in image pixels (measured on all 604 pages).
+   The frame sits left on odd pages and right on even ones (the word meanings take the outer margin); fill mode
+   stops at the frame's bottom border so the colour legend is left out. */
+var IMG_W=1792, IMG_H=2560;
+function rectFor(p){
+  if(root.dataset.meanings) return [0, 0, IMG_W, IMG_H];
+  if(p<=2) return [70, 210, 1652, 2168];                    // the decorated opening pages
+  return [p%2 ? 26 : 394, 186, 1370, root.dataset.fit==='fill' ? 2082 : 2188];
+}
+function applyRect(d){
+  var p=+d.dataset.p, R=rectFor(p), img=d.querySelector('img'), n=d.querySelector('.pno');
+  d.style.setProperty('--r', (R[2]/R[3]).toFixed(4));
+  img.style.width=(IMG_W/R[2]*100)+'%'; img.style.height=(IMG_H/R[3]*100)+'%';
+  img.style.left=(-R[0]/R[2]*100)+'%'; img.style.top=(-R[1]/R[3]*100)+'%';
+  // the number box goes in the gap between the surah and hizb labels (y 193-257); on a few late pages the
+  // surah label names several surahs and the gap sits right of centre
+  var c = p>=601 ? .64 : [587,591,595,596,597,598,599,600].indexOf(p)>=0 ? .573 : .5, cx=R[0]+1370*c;
+  n.style.left=((cx-75-R[0])/R[2]*100)+'%'; n.style.width=(150/R[2]*100)+'%';
+  n.style.top=((193-R[1])/R[3]*100)+'%'; n.style.height=(64/R[3]*100)+'%';
+}
+function reframe(){ Array.prototype.forEach.call(document.querySelectorAll('.pg'), applyRect); }
 function makePage(p){
-  var d=document.createElement('div'); d.className=p>2?'pg framed':'pg'; d.dataset.p=p;
+  var d=document.createElement('div'); d.className=p>2?'pg':'pg deco'; d.dataset.p=p;
   var img=document.createElement('img'); img.alt='الصفحة '+p; img.decoding='async'; img.src=PAGES[p-1];
-  var n=document.createElement('div'); n.className=p<=2?'pno low':p>=601?'pno wide':'pno'; n.setAttribute('aria-hidden','true'); n.textContent=p;
+  var n=document.createElement('div'); n.className='pno'; n.setAttribute('aria-hidden','true'); n.textContent=p;
   img.onerror=function(){ img.style.visibility='hidden'; n.hidden=true; if(d.querySelector('.miss')) return; var m=document.createElement('div'); m.className='miss';
     m.textContent='هذه الصفحة غير محفوظة على الجهاز. اتصل بالإنترنت، أو فعّل «القراءة دون اتصال» من الإعدادات.'; d.appendChild(m); };
-  d.append(img,n); return d;
+  d.append(img,n); applyRect(d); return d;
 }
 function warm(p){ if(p>=1&&p<=N){ var i=new Image(); i.decoding='async'; i.src=PAGES[p-1]; if(i.decode) i.decode().catch(function(){}); } }
 function buildSpread(ps){
@@ -625,11 +644,17 @@ function cycleTone(){ setTone(TONES[(TONES.indexOf(root.dataset.tone)+1)%TONES.l
 $('themeBtn').onclick=cycleTone;
 Array.prototype.forEach.call($('toneSeg').children, function(b){ b.onclick=function(){ setTone(b.dataset.tone); }; });
 function setFit(f){
-  f = f==='fill' ? 'fill' : 'fit'; root.dataset.fit=f; store.set('fit',f);
+  f = f==='fill' ? 'fill' : 'fit'; root.dataset.fit=f; store.set('fit',f); reframe();
   Array.prototype.forEach.call($('fitSeg').children, function(b){ b.setAttribute('aria-pressed', String(b.dataset.fit===f)); });
   $('fitNote').textContent = f==='fill' ? 'تُمدَّد الصفحة لتملأ الشاشة ويُخفى مفتاح ألوان التجويد أسفلها، فيبدو الخط أطول من أصله.' : 'تظهر الصفحة بأبعادها الأصلية.';
 }
 Array.prototype.forEach.call($('fitSeg').children, function(b){ b.onclick=function(){ setFit(b.dataset.fit); }; });
+function setMeanings(on){
+  if(on) root.dataset.meanings='1'; else delete root.dataset.meanings;
+  store.set('meanings', on); reframe();
+  $('meanBtn').textContent = on ? 'مفعّل' : 'متوقف'; $('meanBtn').setAttribute('aria-pressed', String(on));
+}
+$('meanBtn').onclick=function(){ setMeanings(!root.dataset.meanings); };
 function setBar(on){
   if(on) delete root.dataset.nobar; else root.dataset.nobar='1';
   store.set('bottomBar', on);
@@ -673,12 +698,12 @@ addEventListener('appinstalled', function(){ installEvt=null; $('installRow').hi
 $('installBtn').onclick=function(){ if(!installEvt) return; installEvt.prompt(); installEvt.userChoice.then(function(){ installEvt=null; $('installRow').hidden=true; }); };
 
 /* offline reading is optional: off by default, on keeps every page on the device (about 8 MB) */
-var PAGE_CACHE='warsh-pages-v2';   // same name as in sw.js
+var PAGE_CACHE='warsh-pages-v3';   // same name as in sw.js
 var offOn=false, offReady=false;
 function offBtnUi(){ var b=$('offBtn'); b.textContent=offOn?'مفعّل':'متوقف'; b.setAttribute('aria-pressed',String(offOn)); b.disabled=!offReady; }
 function offUi(done,total){
   var note=$('offNote'), m=$('offMeter');
-  if(!offOn){ note.textContent='الصفحات لا تُحفظ على الجهاز (التفعيل يحفظ المصحف كاملاً، نحو 105 ميغابايت)'; m.hidden=true; return; }
+  if(!offOn){ note.textContent='الصفحات لا تُحفظ على الجهاز (التفعيل يحفظ المصحف كاملاً، نحو 200 ميغابايت)'; m.hidden=true; return; }
   if(done>=total){ note.textContent='حُفظت جميع الصفحات ('+total+') على هذا الجهاز'; m.hidden=true; return; }
   note.textContent='جارٍ حفظ الصفحات… '+done+' من '+total; m.hidden=false; $('offBar').style.width=Math.round(done/total*100)+'%';
 }
@@ -690,7 +715,7 @@ function offStart(){
   swPost({type:'precache', pages:PAGES});
 }
 $('offBtn').onclick=function(){
-  offOn=!offOn; store.set('offline604',offOn); offBtnUi();
+  offOn=!offOn; store.set('offlineHD',offOn); offBtnUi();
   if(offOn) offStart();
   else { swPost({type:'drop-pages'}); offUi(); toast('حُذفت الصفحات المحفوظة'); }
 };
@@ -709,7 +734,7 @@ if('serviceWorker' in navigator){
     }).catch(function(){ $('offNote').textContent='القراءة دون اتصال غير متاحة في هذا المتصفح'; });
     navigator.serviceWorker.ready.then(function(){
       // pages saved by an earlier version count as switched on
-      return caches.has(PAGE_CACHE).then(function(has){ offOn = store.get('offline604', has); });
+      return caches.has(PAGE_CACHE).then(function(has){ offOn = store.get('offlineHD', has); });
     }).catch(function(){}).then(function(){
       offReady=true; offBtnUi();
       if(offOn) offStart(); else offUi();
@@ -740,7 +765,7 @@ var rz; addEventListener('resize', function(){ clearTimeout(rz); rz=setTimeout(f
 /* ---------- start ---------- */
 (function(){
   var t=store.get('tone',null); if(!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
-  setTone(t,true); setBar(store.get('bottomBar',true)); setFit(store.get('fit','fit')); setDim(store.get('dim',100)); oriApply();
+  setTone(t,true); setBar(store.get('bottomBar',true)); setMeanings(store.get('meanings',false)); setFit(store.get('fit','fit')); setDim(store.get('dim',100)); oriApply();
   var q=new URLSearchParams(location.search), qp=parseInt(q.get('page'),10);
   go(qp>=1 ? qp : (pos[track]||1), true);
   history.replaceState({app:1, p:page, t:track}, '');
