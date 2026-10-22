@@ -11,6 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script src="version.js"></script>
 <script src="data.js"></script>
+<script src="text.js"></script>
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>مصحف ورش</title>
@@ -170,6 +171,61 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
 .banner{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:40;display:flex;align-items:center;gap:12px;
   background:var(--ink);color:var(--surface);padding:10px 12px 10px 16px;border-radius:14px;box-shadow:var(--shadow);font-size:14px;max-width:calc(100% - 24px)}
 .banner button{border:0;border-radius:9px;background:var(--accent);color:#1c1400;font-weight:600;padding:7px 12px}
+
+/* recitation check (pages with text in text.js): bands over the page lines mark the chosen lines, hide them
+   while reciting, then show which lines had mistakes */
+.mk{position:absolute;display:none;place-items:center;border-radius:.6cqh;pointer-events:none}
+:root[data-mem] .mk.sel,:root[data-mem] .mk.hide,:root[data-mem] .mk.bad,:root[data-mem] .mk.good{display:grid}
+.mk.sel{background:rgba(214,160,40,.16);box-shadow:inset 0 0 0 max(1px,.25cqh) rgba(214,160,40,.7)}
+.mk.bad{background:rgba(210,60,40,.14);box-shadow:inset 0 0 0 max(1px,.25cqh) rgba(210,60,40,.7)}
+.mk.good{background:rgba(31,150,90,.10)}
+/* a hidden line is paper over the text, filtered like the page so it matches every reading tone */
+.mk.hide{background:#fff repeating-linear-gradient(0deg,transparent 0 46%,#e2e6e0 46% 54%,transparent 54% 100%);
+  color:#8a958e;font:600 2.4cqh/1 var(--f-ui);filter:brightness(var(--dim,1))}
+.mk span{display:none}.mk.hide span{display:block;background:#fff;padding:0 1.2cqh}
+:root[data-tone="warm"] .mk.hide{filter:sepia(.4) saturate(.9) brightness(calc(var(--dim,1) * .96))}
+:root[data-tone="night"] .mk.hide{filter:invert(.92) hue-rotate(180deg) saturate(.85) brightness(calc(var(--dim,1) * .88)) contrast(.95)}
+:root[data-tone="black"] .mk.hide{filter:invert(1) hue-rotate(180deg) contrast(1.3) brightness(var(--dim,1))}
+/* the panel takes the bottom of the screen and the page shrinks to the space above it */
+:root[data-mem] .stage{bottom:var(--memh,0px)}
+:root[data-mem] .bottom{display:none}
+:root[data-mem]{--toast-y:calc(var(--memh,0px) + 12px)}
+.mem{position:fixed;left:0;right:0;bottom:0;z-index:12;background:var(--surface);border-top:1px solid var(--line);box-shadow:var(--shadow);
+  padding:6px max(12px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));
+  max-height:46vh;display:flex;flex-direction:column;gap:6px;-webkit-user-select:text;user-select:text}
+.mem > *{width:100%;max-width:760px;margin:0 auto}
+.mhead{display:flex;align-items:center;gap:8px}
+.mhead .iconbtn{width:36px;height:36px}
+.mtitle{flex:1;min-width:0;font-size:14px;color:var(--muted)}
+.mtitle b{color:var(--ink);font-size:16px;margin-left:6px}
+.mpages{display:flex;gap:4px}
+.mmsg{font-size:13px;line-height:1.6;color:var(--muted)}
+.mmsg.bad{color:#b4412d}
+.mact{display:flex;gap:8px;flex-wrap:wrap}
+.mact .pill{padding:9px 13px;font-size:14px}
+.mact .pill:disabled{opacity:.45;cursor:default}
+.mact .rec{background:#b4412d;border-color:#b4412d;color:#fff;font-weight:600;animation:recpulse 1.4s ease-in-out infinite}
+@keyframes recpulse{50%{box-shadow:0 0 0 6px rgba(180,65,45,.18)}}
+.mlive{font-family:var(--f-ar);font-size:17px;line-height:1.6;color:var(--muted);direction:rtl;min-height:0;max-height:3.3em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+.mlive:empty{display:none}
+.msum{font-size:14px;font-weight:600}
+.mout{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;border-top:1px solid var(--line);padding-top:6px}
+.mout:empty{display:none}
+.mline{display:flex;gap:8px;align-items:baseline;padding:2px 0}
+.mline > i{font-style:normal;font-size:11px;color:var(--muted);width:1.8em;flex:none;text-align:center;font-variant-numeric:tabular-nums}
+.mwords{font-family:var(--f-ar);font-size:21px;line-height:2;direction:rtl}
+.w{border-radius:5px;padding:0 2px}
+.w.bad{background:rgba(210,60,40,.16);color:#b4412d;text-decoration:underline wavy rgba(210,60,40,.7) 1px;text-underline-offset:6px}
+.w.miss{background:rgba(220,140,20,.18);color:#a35f00;text-decoration:line-through rgba(220,140,20,.8)}
+.w.unsure{color:var(--muted);text-decoration:underline dotted;text-underline-offset:6px}
+.w small{font:12px var(--f-ui);color:inherit;opacity:.85;margin-right:3px;text-decoration:none;display:inline-block}
+.w.extra{background:rgba(120,70,190,.15);color:#7046be;font-size:.8em}
+.vno{color:var(--green);font-size:.75em;margin:0 2px}
+.mkey{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);padding-top:4px}
+.mkey .w{font:inherit}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .w.bad{color:#f08a74}:root:not([data-theme="light"]) .w.miss{color:#f0b65a}:root:not([data-theme="light"]) .w.extra{color:#b79cf0}}
+:root[data-theme="dark"] .w.bad{color:#f08a74}:root[data-theme="dark"] .w.miss{color:#f0b65a}:root[data-theme="dark"] .w.extra{color:#b79cf0}
+:root[data-theme="dark"] .mmsg.bad{color:#f08a74}
 @media (prefers-reduced-motion:reduce){*:not(.spread){transition:none!important}}   /* page animation is its own setting */
 </style>
 </head>
@@ -185,6 +241,9 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
       <div class="sname" id="hSurah"></div>
       <div class="meta" id="hMeta"></div>
     </div>
+    <button class="iconbtn" id="memBtn" aria-label="التسميع" title="التسميع (M)" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+    </button>
     <button class="iconbtn" id="bmBtn" aria-label="ضع علامة على هذه الصفحة" title="علامة (B)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path id="bmPath" d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg>
     </button>
@@ -212,6 +271,28 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
     </button>
   </div>
 </footer>
+
+<section class="mem" id="mem" hidden aria-label="التسميع">
+  <div class="mhead">
+    <div class="mtitle"><b>التسميع</b><span id="memWhere"></span></div>
+    <div class="mpages" id="memPages"></div>
+    <button class="iconbtn" id="memForget" aria-label="مسح القراءات المحفوظة لهذه الأسطر" title="مسح القراءات">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+    </button>
+    <button class="iconbtn" id="memClose" aria-label="إغلاق التسميع">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="mmsg" id="memMsg" aria-live="polite"></div>
+  <div class="mact">
+    <button class="pill primary" id="memRead">اقرأ من المصحف</button>
+    <button class="pill primary" id="memRecite">سمّع من حفظك</button>
+    <button class="pill" id="memAll">الصفحة كاملة</button>
+    <button class="pill rec" id="memStop" hidden>إنهاء</button>
+  </div>
+  <div class="mlive" id="memLive"></div>
+  <div class="mout" id="memOut"></div>
+</section>
 
 <div class="hint" id="hint" hidden></div>
 
@@ -273,7 +354,7 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
     <div class="sec">مساعدة</div>
     <div class="help">
     اسحب الصفحة أو اضغط على جانبَيها لتقليبها، واضغط على وسطها لإظهار الأزرار أو إخفائها.
-    <br><kbd>←</kbd> <kbd>→</kbd> تقليب · <kbd>F</kbd> ملء الشاشة · <kbd>B</kbd> علامة · <kbd>T</kbd> الورد/التعلّم · <kbd>I</kbd> الفهرس · <kbd>S</kbd> الإعدادات · <kbd>N</kbd> وضع القراءة · <kbd>Z</kbd> ملء الشاشة بالصفحة
+    <br><kbd>←</kbd> <kbd>→</kbd> تقليب · <kbd>F</kbd> ملء الشاشة · <kbd>B</kbd> علامة · <kbd>T</kbd> الورد/التعلّم · <kbd>M</kbd> التسميع · <kbd>I</kbd> الفهرس · <kbd>S</kbd> الإعدادات · <kbd>N</kbd> وضع القراءة · <kbd>Z</kbd> ملء الشاشة بالصفحة
     <br>صور الصفحات: مصحف التجويد برواية ورش، <span dir="ltr">easyquran-eg.com</span>
     </div>
    </div>
@@ -317,7 +398,7 @@ function pagesFor(p){ if(!twoUp()) return [p]; var a = p%2 ? p : p-1; return a+1
 /* window of the 1792x2560 page image to show: [x, y, width, height] in image pixels (measured on all 604 pages).
    The frame sits left on odd pages and right on even ones (the word meanings take the outer margin); fill mode
    stops at the frame's bottom border so the colour legend is left out. */
-var IMG_W=1792, IMG_H=2560;
+var IMG_W=1792, IMG_H=2560, TEXT=self.MUSHAF_TEXT||{};
 function rectFor(p){
   if(root.dataset.meanings) return [0, 0, IMG_W, IMG_H];
   if(p<=2) return [70, 210, 1652, 2168];                    // the decorated opening pages
@@ -333,6 +414,10 @@ function applyRect(d){
   var c = p>=601 ? .64 : [587,591,595,596,597,598,599,600].indexOf(p)>=0 ? .573 : .5, cx=R[0]+1370*c;
   n.style.left=((cx-75-R[0])/R[2]*100)+'%'; n.style.width=(150/R[2]*100)+'%';
   n.style.top=((193-R[1])/R[3]*100)+'%'; n.style.height=(64/R[3]*100)+'%';
+  var T=TEXT[p];
+  if(T) Array.prototype.forEach.call(d.querySelectorAll('.mk'), function(m){ var L=T.lines[+m.dataset.l];
+    m.style.left=((T.x[0]-R[0])/R[2]*100)+'%'; m.style.width=((T.x[1]-T.x[0])/R[2]*100)+'%';
+    m.style.top=((L[0]-R[1])/R[3]*100)+'%'; m.style.height=((L[1]-L[0])/R[3]*100)+'%'; });
 }
 function reframe(){ Array.prototype.forEach.call(document.querySelectorAll('.pg'), applyRect); }
 function makePage(p){
@@ -341,7 +426,10 @@ function makePage(p){
   var n=document.createElement('div'); n.className='pno'; n.setAttribute('aria-hidden','true'); n.textContent=p;
   img.onerror=function(){ img.style.visibility='hidden'; n.hidden=true; if(d.querySelector('.miss')) return; var m=document.createElement('div'); m.className='miss';
     m.textContent='هذه الصفحة غير محفوظة على الجهاز. اتصل بالإنترنت، أو فعّل «القراءة دون اتصال» من الإعدادات.'; d.appendChild(m); };
-  d.append(img,n); applyRect(d); return d;
+  d.append(img,n);
+  if(TEXT[p]) TEXT[p].lines.forEach(function(L,i){ var m=document.createElement('div'); m.className='mk'; m.dataset.l=i;
+    var t=document.createElement('span'); t.textContent='السطر '+(i+1); m.appendChild(t); d.appendChild(m); });
+  applyRect(d); return d;
 }
 function warm(p){ if(p>=1&&p<=N){ var i=new Image(); i.decoding='async'; i.src=PAGES[p-1]; if(i.decode) i.decode().catch(function(){}); } }
 function buildSpread(ps){
@@ -360,7 +448,7 @@ function go(p, opts){
   opts = opts===true ? {instant:true} : (opts||{});
   p = Math.max(1, Math.min(N, parseInt(p,10)||1));
   var prev = page; page = p; pos[track] = page; store.set('pos', pos);
-  if(history.state && history.state.app && !history.state.panel) history.replaceState({app:1, p:page, t:track}, '');
+  if(history.state && history.state.app && !history.state.panel) history.replaceState({app:1, p:page, t:track, mem:history.state.mem}, '');
   var ps = pagesFor(p), key = ps.join();
   if(!cur || cur.dataset.ps!==key){
     var d = opts.drag, old = cur, mode = (opts.instant || !old) ? 'none' : animMode;
@@ -399,6 +487,7 @@ function updateChrome(){
   $('bmPath').setAttribute('fill', marked?'currentColor':'none');
   $('bmBtn').setAttribute('aria-label', marked?'إزالة العلامة':'ضع علامة على هذه الصفحة');
   if(drawerOpen) renderIndex();
+  memSync();
 }
 
 /* ---------- controls: shown, then fade while reading ---------- */
@@ -453,7 +542,7 @@ stage.addEventListener('pointermove', function(e){
     drag.axis = Math.abs(dx) > Math.abs(dy)*1.2 ? 'x' : 'y';
     if(drag.axis==='x'){ try{ stage.setPointerCapture(e.pointerId); }catch(_){} dismissHint(); }
   }
-  if(drag.axis!=='x') return;
+  if(drag.axis!=='x' || memOn) return;
   drag.dx=dx;
   if(animMode!=='slide') return;
   var dir = dx>0 ? 1 : -1, W = stage.clientWidth, t = target(dir);
@@ -465,6 +554,7 @@ stage.addEventListener('pointermove', function(e){
 function endDrag(e, cancelled){
   if(!drag || e.pointerId!==drag.id) return;
   var d=drag; drag=null;
+  if(memOn){ if(!d.axis && !cancelled) memTap(e.clientX, e.clientY); return; }   // while checking, a tap picks lines and the page stays
   if(d.axis==='x'){
     var W=stage.clientWidth, v=d.dx/Math.max(1,Date.now()-d.t0), dir=d.dx>0?1:-1, t=target(dir);
     var commit = !cancelled && t && (Math.abs(d.dx)>W*0.18 || (Math.abs(d.dx)>30 && Math.abs(v)>0.3));
@@ -603,6 +693,7 @@ addEventListener('popstate', function(e){
   var st=e.state; if(!st || !st.app) return;
   if(st.panel){ if(!drawerOpen) openIndex('idx', true); return; }
   if(drawerOpen) closeIndex(true);
+  if(st.mem){ if(!memOn) openMem(true); } else if(memOn) closeMem(true);
   if(st.t && st.t!==track){ pos[track]=page; track=st.t; store.set('track',track); store.set('pos',pos); trackUi(); }
   if(st.p && st.p!==page) go(st.p);
 });
@@ -616,6 +707,259 @@ $('gotoForm').onsubmit=function(e){
   if(/^\d+$/.test(q) && +q>=1 && +q<=N){ jump(+q); $('gotoInput').value=''; closeIndex(); return; }
   msg.textContent='اكتب رقم صفحة من 1 إلى '+N+'، أو آية مثل 2:255.'; msg.classList.add('bad');
 };
+
+/* ---------- recitation check (a trial on the pages in text.js) ----------
+   Pick lines on the page, read them from the page a few times while the app listens, then recite them from
+   memory with the lines hidden. The browser's speech recognition writes down both; the recitation is aligned
+   word by word with the printed text, and the reading passes show how the recognizer writes this reader's
+   correct reading, so its own habits and slips are not counted as mistakes. */
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+var memOn=false, memP=0, memSel=null, memAnchor=0, memPhase='', memResult=null;   // memPhase: '' | 'read' | 'recite'
+var memPasses = store.get('memPasses', {});   // "page:from-to" -> what was heard in the reading passes (latest 5)
+
+/* words as plain letters: diacritics dropped and the hamza and alif forms folded, so neither the spelling
+   nor how the recognizer writes a hamza (يؤمنون / يومنون) makes a difference */
+function memNorm(s){ return s.replace(/[ؐ-ًؚ-ٰٟۖ-ۭ࣓-ࣿـ]/g,'')
+  .replace(/[أإآٱ]/g,'ا').replace(/ؤ/g,'و').replace(/ئ/g,'ي').replace(/ء/g,'').replace(/ى/g,'ي').replace(/ة/g,'ه')
+  .replace(/[^ء-ي]+/g,' ').trim(); }
+function memWords(s){ var n=memNorm(s); return n ? n.split(' ') : []; }
+function lev(a,b){ var p=[], c, i, j; for(j=0;j<=b.length;j++) p[j]=j;
+  for(i=1;i<=a.length;i++){ c=[i]; for(j=1;j<=b.length;j++) c[j]=Math.min(p[j]+1, c[j-1]+1, p[j-1]+(a[i-1]===b[j-1]?0:1)); p=c; }
+  return p[b.length]; }
+// the same word, up to one letter in five (اانذرتهم / انذرتهم); a different word is further apart (المفسدون / المفلحون)
+function near(a,b){ return a===b || lev(a,b)*5 <= Math.max(a.length,b.length); }
+var MEM_OPENERS=[memWords('أعوذ بالله من الشيطان الرجيم'), memWords('بسم الله الرحمن الرحيم')];
+function memHyp(text, ref){
+  var h=memWords(text), out=[];
+  for(var i=0;i<h.length;i++){   // الم is read letter by letter
+    if(h[i]==='الف' && h[i+1]==='لام' && h[i+2]==='ميم'){ out.push('الم'); i+=2; } else out.push(h[i]); }
+  MEM_OPENERS.forEach(function(o){   // the isti'adha and basmala said before the lines are not part of them
+    var s=out.slice(0,o.length).join(' ');
+    if(s===o.join(' ') && ref.slice(0,o.length).join(' ')!==s) out=out.slice(o.length); });
+  return out;
+}
+/* word alignment by edit distance: got[i] is the spoken word matched with ref[i] (null when it was left out),
+   ext[i] the spoken words with no match that came before ref[i] (ext[n]: after the last) */
+function memAlign(ref, hyp){
+  var n=ref.length, m=hyp.length, C=[], D=[], i, j;
+  for(i=0;i<n;i++){ C[i]=[]; for(j=0;j<m;j++) C[i][j]=near(ref[i],hyp[j])?0:1; }
+  for(i=0;i<=n;i++){ D[i]=[i]; for(j=1;j<=m;j++) D[i][j] = i ? Math.min(D[i-1][j-1]+C[i-1][j-1], D[i-1][j]+1, D[i][j-1]+1) : j; }
+  var got=[], ext=[]; for(i=0;i<=n;i++){ got.push(null); ext.push([]); }
+  i=n; j=m;
+  while(i>0 || j>0){
+    if(i>0 && j>0 && D[i][j]===D[i-1][j-1]+C[i-1][j-1]){ got[i-1]=hyp[j-1]; i--; j--; }
+    else if(i>0 && D[i][j]===D[i-1][j]+1) i--;
+    else { ext[i].unshift(hyp[j-1]); j--; }
+  }
+  got.pop(); return {got:got, ext:ext};
+}
+function memHeard(ref, text){ var A=memAlign(ref, memHyp(text, ref)); return ref.map(function(w,i){ return A.got[i]!=null && near(w, A.got[i]); }); }
+// each word: ok, bad (another word, h: what was heard), miss (left out), or unsure (the recognizer also missed it
+// in most reading passes, so it can't tell); extra[i]: words added before word i
+function memGrade(ref, passes, text){
+  var A=memAlign(ref, memHyp(text, ref)), P=passes.map(function(t){ return memAlign(ref, memHyp(t, ref)); });
+  var words=ref.map(function(w,i){
+    var g=A.got[i];
+    if(g!=null && near(w,g)) return {k:'ok'};
+    // heard the way a reading pass heard it: that is how the recognizer writes this reader's correct reading
+    if(g!=null && P.some(function(p){ return p.got[i]!=null && near(p.got[i],g); })) return {k:'ok'};
+    var heard=P.filter(function(p){ return p.got[i]!=null && near(w,p.got[i]); }).length;
+    if(heard*2 < P.length) return {k:'unsure', h:g};
+    return g==null ? {k:'miss'} : {k:'bad', h:g};
+  });
+  // added words don't count when they repeat the words just before (going back to pick up the thread),
+  // or when the recognizer added them at that place in a reading pass too
+  var extra=A.ext.map(function(xs,i){ return xs.filter(function(x){
+    for(var k=Math.max(0,i-4); k<=Math.min(i,ref.length-1); k++) if(near(x,ref[k])) return false;
+    return !P.some(function(p){ return p.ext.slice(Math.max(0,i-1), i+2).some(function(e){ return e.some(function(y){ return near(x,y); }); }); });
+  }); });
+  return {words:words, extra:extra};
+}
+
+/* listening: the browser's speech recognition (Chrome sends the audio to Google, so it needs a connection).
+   Phones end a session at every pause, so a new one starts until «إنهاء»; what each one heard is kept. */
+var rec=null, recWant=false, recDone=[], recSess=[], recLive='', recEnd=null, recQuick=0, recTimer;
+function listen(onEnd){ recDone=[]; recSess=[]; recLive=''; recEnd=onEnd; recQuick=0; recWant=true; recOpen(); }
+function heardText(){ return recDone.concat(recSess, recLive ? [recLive] : []).join(' ').trim(); }
+function recOpen(){
+  var r=new SR(), t0=Date.now(); rec=r;
+  r.lang='ar-SA'; r.continuous=true; r.interimResults=true;
+  r.onresult=function(e){
+    if(rec!==r) return;
+    var fin=[], live='';
+    for(var i=0;i<e.results.length;i++){ var t=e.results[i][0].transcript.trim(), last=fin[fin.length-1]; if(!t) continue;
+      if(!e.results[i].isFinal) live+=' '+t;
+      else if(last!=null && t.indexOf(last)===0) fin[fin.length-1]=t;   // Chrome on Android repeats earlier phrases in later ones
+      else if(t!==last) fin.push(t); }
+    recSess=fin; recLive=live.trim();
+    var w=heardText().split(/\s+/); $('memLive').textContent = w.length>14 ? '… '+w.slice(-14).join(' ') : w.join(' ');
+  };
+  r.onerror=function(e){
+    if(rec!==r || e.error==='no-speech' || e.error==='aborted') return;
+    recFinish(e.error==='not-allowed'||e.error==='service-not-allowed' ? 'mic' : e.error==='network' ? 'net' : e.error==='language-not-supported' ? 'lang' : 'other');
+  };
+  r.onend=function(){
+    if(rec!==r) return;
+    recDone=recDone.concat(recSess, recLive ? [recLive] : []); recSess=[]; recLive='';
+    if(!recWant){ recFinish(); return; }
+    recQuick = Date.now()-t0 < 1000 ? recQuick+1 : 0;   // sessions ending at once: the service is refusing
+    if(recQuick>4){ recFinish('other'); return; }
+    try{ recOpen(); }catch(_){ recFinish('other'); }
+  };
+  try{ r.start(); }catch(_){ recFinish('other'); }
+}
+function recStop(){ recWant=false; clearTimeout(recTimer);
+  if(rec){ try{ rec.stop(); }catch(_){} recTimer=setTimeout(function(){ recFinish(); }, 2500); } else recFinish(); }
+function recFinish(err){
+  clearTimeout(recTimer); recWant=false;
+  var r=rec; rec=null; if(r){ try{ r.abort(); }catch(_){} }
+  var f=recEnd; recEnd=null; if(f) f(heardText(), err);
+}
+
+/* the panel */
+var MEM_ERR={mic:'لم يُسمح باستخدام الميكروفون. اسمح به لهذا الموقع من إعدادات المتصفح، ثم حاول مجدداً.',
+  net:'تعذّر الوصول إلى خدمة التعرّف على الكلام. تحقّق من الاتصال بالإنترنت.',
+  lang:'التعرّف على الكلام بالعربية غير متاح في هذا المتصفح.', other:'توقّف التعرّف على الكلام. حاول مجدداً.'};
+function memPages(){ return pagesFor(page).filter(function(q){ return TEXT[q]; }); }
+function memKey(){ return memP+':'+memSel[0]+'-'+memSel[1]; }
+function times(k){ return k===1 ? 'مرة واحدة' : k===2 ? 'مرتين' : k+' مرات'; }
+// the chosen lines as tokens: words {l, t: as printed, w: plain} and verse markers {l, v}
+function memRef(){ var out=[];
+  for(var l=memSel[0]; l<=memSel[1]; l++) TEXT[memP].lines[l-1][2].split(' ').forEach(function(t){
+    out.push(/^\d+$/.test(t) ? {l:l, v:t} : {l:l, t:t, w:memNorm(t)}); });
+  return out; }
+function memRefWords(ref){ return ref.filter(function(x){ return x.w; }).map(function(x){ return x.w; }); }
+function memSync(){   // after every page change
+  var ps=memPages(); $('memBtn').hidden=!ps.length;
+  if(!memOn) return;
+  if(!ps.length){ closeMem(true); toast('التسميع متاح في الصفحات 1–3 في هذه التجربة'); }
+  else if(ps.indexOf(memP)<0) memSetPage(ps[0]);
+  else memMarks();   // the spread was rebuilt
+}
+function openMem(fromPop){
+  var ps=memPages(); if(memOn || !ps.length) return;
+  memOn=true; root.dataset.mem='1'; $('mem').hidden=false; $('memBtn').classList.add('on');
+  if(!fromPop) history.pushState({app:1, p:page, t:track, mem:1}, '');
+  if(ps.indexOf(memP)<0) memSetPage(ps[0]); else memRender();
+}
+function closeMem(fromPop){
+  if(!memOn) return;
+  if(!fromPop && history.state && history.state.mem){ history.back(); return; }   // popstate closes it
+  memCancel(); memOn=false; delete root.dataset.mem; $('mem').hidden=true; $('memBtn').classList.remove('on'); memMarks();
+}
+function memCancel(){ if(memPhase){ memPhase=''; recEnd=null; recFinish(); $('memLive').textContent=''; } }
+function memSetPage(p){ memCancel(); memP=p; memSel=null; memAnchor=0; memResult=null; memRender(); }
+// a tap on a line picks it; a tap on a second line takes everything between them
+function memTap(x, y){
+  if(memPhase || !cur) return;
+  Array.prototype.forEach.call(cur.querySelectorAll('.pg'), function(d){
+    var b=d.getBoundingClientRect(), p=+d.dataset.p;
+    if(!TEXT[p] || x<b.left || x>b.right || y<b.top || y>b.bottom) return;
+    var R=rectFor(p), iy=R[1]+(y-b.top)/b.height*R[3], l=0;
+    TEXT[p].lines.forEach(function(L,i){ if(iy>=L[0] && iy<L[1]) l=i+1; });
+    if(!l) return;
+    if(p!==memP){ memP=p; memAnchor=0; }
+    if(memAnchor){ memSel=[Math.min(memAnchor,l), Math.max(memAnchor,l)]; memAnchor=0; }
+    else { memSel=[l,l]; memAnchor=l; }
+    memResult=null; memRender();
+  });
+}
+function memMarks(){
+  Array.prototype.forEach.call(stage.querySelectorAll('.mk'), function(m){
+    var l=+m.dataset.l+1, inSel = memOn && +m.parentNode.dataset.p===memP && memSel && l>=memSel[0] && l<=memSel[1];
+    var k = !inSel ? '' : memPhase==='recite' ? 'hide' : memResult && memResult.kind==='recite' ? (memResult.badLines.indexOf(l)>=0 ? 'bad' : 'good') : 'sel';
+    m.className = 'mk'+(k ? ' '+k : '');
+  });
+}
+function memRender(note, bad){
+  var n=TEXT[memP].lines.length, passes=memSel ? (memPasses[memKey()]||[]).length : 0, busy=!!memPhase;
+  $('memWhere').textContent=' · الصفحة '+memP+(memSel ? ' · '+(memSel[0]===memSel[1] ? 'السطر '+memSel[0] : 'الأسطر '+memSel[0]+'–'+memSel[1]) : '');
+  var pc=$('memPages'), ps=memPages(); pc.innerHTML='';
+  if(ps.length>1) ps.forEach(function(q){ var b=document.createElement('button'); b.className='pill'; b.textContent='ص '+q;
+    b.setAttribute('aria-pressed', String(q===memP)); b.disabled=busy; b.onclick=function(){ memSetPage(q); }; pc.appendChild(b); });
+  $('memRead').hidden=$('memRecite').hidden=busy; $('memStop').hidden=!busy;
+  $('memAll').hidden = busy || !!(memSel && memSel[0]===1 && memSel[1]===n);
+  $('memForget').hidden = busy || !passes;
+  $('memRead').disabled = !SR || !memSel; $('memRecite').disabled = !SR || !passes;
+  $('memRead').textContent = passes ? 'اقرأ مرة أخرى' : 'اقرأ من المصحف';
+  $('memRecite').textContent = memResult && memResult.kind==='recite' ? 'سمّع مرة أخرى' : 'سمّع من حفظك';
+  var msg = note ? note
+    : !SR ? 'التعرّف على الكلام غير متاح في هذا المتصفح. جرّب Chrome أو Edge أو Safari.'
+    : memPhase==='read' ? 'اقرأ الأسطر المحددة من المصحف بصوت واضح، ثم اضغط «إنهاء».'
+    : memPhase==='recite' ? 'سمّع الأسطر المخفية من حفظك، ثم اضغط «إنهاء».'
+    : !memSel ? 'اضغط على سطر في الصفحة لتختاره، ثم على سطر آخر لتحديد ما بينهما، أو اختر الصفحة كاملة.'
+    : memResult && memResult.kind==='recite' ? 'الأسطر الحمراء في الصفحة فيها أخطاء.'
+    : !passes ? 'اقرأ هذه الأسطر من المصحف ليتعرّف التطبيق على قراءتك (يُستحسن 3 مرات)، ثم سمّعها من حفظك وستُخفى عنك.'
+    : 'قرأتها '+times(passes)+'. اقرأ مرة أخرى، أو سمّعها من حفظك وستُخفى عنك.';
+  $('memMsg').textContent=msg; $('memMsg').classList.toggle('bad', !!(bad || !SR));
+  memOutRender(); memMarks();
+}
+function memOutRender(){
+  var o=$('memOut'), R=memResult; o.innerHTML=''; if(!R) return;
+  function el(tag, cls, text){ var e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+  var sum=el('div','msum'); o.appendChild(sum);
+  var wi=0, line=null, at=0, nw=memRefWords(R.ref).length;
+  function extras(i){ if(R.kind==='recite') R.g.extra[i].forEach(function(x){ line.append(el('span','w extra','+'+x), ' '); }); }
+  R.ref.forEach(function(tk){
+    if(tk.l!==at){ at=tk.l; var row=el('div','mline'); line=el('span','mwords'); var no=el('i',null,at); no.title='السطر '+at; row.append(no, line); o.appendChild(row); }
+    if(tk.v){ line.append(el('span','vno','﴿'+tk.v+'﴾'), ' '); return; }
+    var i=wi++, w;
+    if(R.kind==='recite'){ extras(i); var r=R.g.words[i]; w=el('span','w '+r.k, tk.t); if(r.h && r.k!=='ok') w.appendChild(el('small',null,'('+r.h+')')); }
+    else w=el('span', R.heard[i] ? 'w' : 'w unsure', tk.t);
+    line.append(w, ' ');
+  });
+  if(R.kind==='recite') extras(nw);
+  var key=el('div','mkey');
+  if(R.kind==='recite'){
+    var c={bad:0, miss:0, unsure:0}, ex=0; R.g.words.forEach(function(r){ if(c[r.k]!=null) c[r.k]++; });
+    R.g.extra.forEach(function(xs){ ex+=xs.length; });
+    var errs=c.bad+c.miss+ex;
+    sum.textContent = (errs ? 'الأخطاء: '+errs+' في '+nw+' كلمة' : 'ما شاء الله، لا أخطاء في '+nw+' كلمة')
+      + (c.unsure ? ' · '+c.unsure+' لم يُتحقَّق منها' : '');
+    key.append(el('span','w bad','كلمة خطأ'), el('span','w miss','كلمة ناقصة'), el('span','w extra','+ زائدة'), el('span','w unsure','لم يُتحقَّق منها'));
+  } else {
+    var got=R.heard.filter(Boolean).length;
+    sum.textContent = (R.failed ? 'لم تُحفظ: ' : 'القراءة '+R.n+': ')+'تعرّف التطبيق على '+got+' من '+nw+' كلمة';
+    if(got<nw) key.append(el('span','w unsure','لم يتعرّف عليها'));
+  }
+  if(key.childNodes.length) o.appendChild(key);
+}
+function memStart(kind){
+  if(!SR || !memSel || memPhase) return;
+  if(navigator.onLine===false){ memRender('التعرّف على الكلام يحتاج إلى اتصال بالإنترنت.', true); return; }
+  var key=memKey(), ref=memRef(), words=memRefWords(ref);
+  memPhase=kind; memResult=null; $('memLive').textContent=''; memRender();
+  listen(function(text, err){
+    memPhase=''; $('memLive').textContent='';
+    if(err){ memRender(MEM_ERR[err], true); return; }
+    if(!memWords(text).length){ memRender('لم يُسمع شيء. تحقّق من الميكروفون واقرأ بصوت أوضح.', true); return; }
+    if(kind==='read'){
+      var heard=memHeard(words, text), got=heard.filter(Boolean).length;
+      // a pass that heard less than half the words (other lines, noise) would only blur the check
+      if(got*2 < words.length){ memResult={kind:'read', ref:ref, heard:heard, failed:true};
+        memRender('لم تُحفظ هذه القراءة لأن التطبيق لم يتعرّف على أكثر كلماتها. اقرأ الأسطر المحددة نفسها بصوت واضح.', true); return; }
+      var list=(memPasses[key]||[]).concat([text]).slice(-5); memPasses[key]=list; store.set('memPasses', memPasses);
+      memResult={kind:'read', ref:ref, heard:heard, n:list.length};
+    } else {
+      var g=memGrade(words, memPasses[key]||[], text), bad=[], wi=0;
+      ref.forEach(function(tk){ if(!tk.w) return; var i=wi++;
+        if(g.words[i].k==='bad' || g.words[i].k==='miss' || g.extra[i].length) bad.push(tk.l); });
+      if(g.extra[words.length].length) bad.push(memSel[1]);
+      memResult={kind:'recite', ref:ref, g:g, badLines:bad};
+    }
+    memRender();
+  });
+}
+$('memBtn').onclick=function(){ if(memOn) closeMem(); else openMem(); };
+$('memClose').onclick=function(){ closeMem(); };
+$('memRead').onclick=function(){ memStart('read'); };
+$('memRecite').onclick=function(){ memStart('recite'); };
+$('memStop').onclick=recStop;
+$('memAll').onclick=function(){ memSel=[1, TEXT[memP].lines.length]; memAnchor=0; memResult=null; memRender(); };
+$('memForget').onclick=function(){ delete memPasses[memKey()]; store.set('memPasses', memPasses); memResult=null; memRender('مُسحت القراءات المحفوظة لهذه الأسطر.'); };
+// leaving the app stops listening; what was heard so far is dropped
+document.addEventListener('visibilitychange', function(){ if(document.hidden && memPhase){ memCancel(); memRender('توقّف الاستماع لأن التطبيق لم يعد ظاهراً.', true); } });
+if(window.ResizeObserver) new ResizeObserver(function(){ root.style.setProperty('--memh', $('mem').offsetHeight+'px'); }).observe($('mem'));
 
 /* ---------- other controls ---------- */
 $('nextBtn').onclick=function(){ step(1); }; $('prevBtn').onclick=function(){ step(-1); };
@@ -748,7 +1092,9 @@ document.addEventListener('keydown', function(e){
   if(e.metaKey||e.ctrlKey||e.altKey) return;
   if(e.key==='Escape' && drawerOpen){ closeIndex(); return; }
   if(drawerOpen) return;
+  if(e.key==='Escape' && memOn){ closeMem(); return; }
   var k=e.key.toLowerCase();
+  if(memOn && ['arrowleft','arrowright','pagedown','pageup',' ','home','end'].indexOf(k)>=0) return;
   if(k==='arrowleft'||k==='pagedown'||k===' '){ e.preventDefault(); step(1); }
   else if(k==='arrowright'||k==='pageup'){ e.preventDefault(); step(-1); }
   else if(k==='home'){ jump(1); } else if(k==='end'){ jump(N); }
@@ -757,6 +1103,7 @@ document.addEventListener('keydown', function(e){
   else if(k==='z'){ setFit(root.dataset.fit==='fill'?'fit':'fill'); toast(root.dataset.fit==='fill'?'ملء الشاشة':'ملاءمة الصفحة'); }
   else if(k==='b'){ toggleBookmark(); showUI(); }
   else if(k==='t'){ toggleTrack(); showUI(); }
+  else if(k==='m'){ if(memOn) closeMem(); else if(!$('memBtn').hidden) openMem(); }
   else if(k==='i'||k==='/'){ e.preventDefault(); openIndex('idx'); }
   else if(k==='s'){ e.preventDefault(); openIndex('set'); }
 });
