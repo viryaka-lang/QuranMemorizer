@@ -832,7 +832,7 @@ function memRefWords(ref){ return ref.filter(function(x){ return x.w; }).map(fun
 function memSync(){   // after every page change
   var ps=memPages(); $('memBtn').hidden=!ps.length;
   if(!memOn) return;
-  if(!ps.length){ closeMem(true); toast('التسميع متاح في الصفحات 1–3 في هذه التجربة'); }
+  if(!ps.length){ closeMem(true); toast('التسميع متاح في الصفحات 1–'+Math.max.apply(null, Object.keys(TEXT))+' في هذه التجربة'); }
   else if(ps.indexOf(memP)<0) memSetPage(ps[0]);
   else memMarks();   // the spread was rebuilt
 }
