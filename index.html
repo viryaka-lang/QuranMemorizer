@@ -112,7 +112,7 @@ input[type=range]{flex:1;min-width:0;accent-color:var(--green);direction:rtl;hei
 .pagebox{width:58px;padding:7px 4px;border:1px solid var(--line);border-radius:10px;background:var(--surface);text-align:center;font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text}
 @media (max-width:520px){.navbtn span{display:none}.navbtn{padding:0 8px}.where{gap:0 10px}.where .sname{font-size:19px}}
 
-/* tap zones hint */
+/* first-launch hint */
 /* touches pass through the hint to the page, so a swipe in the first seconds still turns it */
 .hint{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:15;pointer-events:none;background:var(--ink);color:var(--surface);
   padding:12px 18px;border-radius:14px;font-size:14px;text-align:center;line-height:1.5;box-shadow:var(--shadow);max-width:min(320px,calc(100% - 32px));transition:opacity .3s}
@@ -272,7 +272,7 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
     <div class="row2" id="installRow" hidden><span>تثبيت التطبيق<small>أضفه إلى الشاشة الرئيسية</small></span><button class="pill primary" id="installBtn">تثبيت</button></div>
     <div class="sec">مساعدة</div>
     <div class="help">
-    اسحب الصفحة أو اضغط على جانبَيها لتقليبها، واضغط على وسطها لإظهار الأزرار أو إخفائها.
+    اسحب الصفحة يميناً أو يساراً لتقليبها، واضغط عليها لإظهار الأزرار أو إخفائها.
     <br><kbd>←</kbd> <kbd>→</kbd> تقليب · <kbd>F</kbd> ملء الشاشة · <kbd>B</kbd> علامة · <kbd>T</kbd> الورد/التعلّم · <kbd>I</kbd> الفهرس · <kbd>S</kbd> الإعدادات · <kbd>N</kbd> وضع القراءة · <kbd>Z</kbd> ملء الشاشة بالصفحة
     <br>صور الصفحات: مصحف التجويد برواية ورش، <span dir="ltr">easyquran-eg.com</span>
     </div>
@@ -474,8 +474,7 @@ function endDrag(e, cancelled){
     return;
   }
   if(d.axis || cancelled) return;
-  var x=e.clientX/innerWidth;                    // a tap: sides turn the page, the middle shows the controls
-  if(x<0.3) step(1); else if(x>0.7) step(-1); else toggleUI();
+  toggleUI();                                    // a tap only shows or hides the controls: pages turn by swiping, never by accident
 }
 stage.addEventListener('pointerup', function(e){ endDrag(e,false); });
 stage.addEventListener('pointercancel', function(e){ endDrag(e,true); });
@@ -660,7 +659,7 @@ function setBar(on){
   store.set('bottomBar', on);
   $('barBtn').textContent = on ? 'ظاهر' : 'مخفي'; $('barBtn').setAttribute('aria-pressed', String(on));
   $('barNote').textContent = on ? 'أزرار التالية والسابقة وشريط الصفحات'
-                                : 'قلّب الصفحات بالسحب أو بالضغط على الجانبين، وانتقل إلى صفحة أو آية من الفهرس';
+                                : 'قلّب الصفحات بالسحب، وانتقل إلى صفحة أو آية من الفهرس';
 }
 $('barBtn').onclick=function(){ setBar(root.dataset.nobar==='1'); };
 function setDim(v){ v=Math.max(50,Math.min(100,+v||100)); root.style.setProperty('--dim', v/100); $('dimRange').value=v; store.set('dim',v); }
@@ -771,7 +770,7 @@ var rz; addEventListener('resize', function(){ clearTimeout(rz); rz=setTimeout(f
   history.replaceState({app:1, p:page, t:track}, '');
   if(q.get('open')==='bookmarks'){ openIndex('idx'); setTimeout(function(){ $('bmList').scrollIntoView(); },300); }
   hint.innerHTML = (fsSupported ? '<b>اضغط في أي مكان للقراءة بملء الشاشة</b>' : '<b>بسم الله</b>') +
-    'اسحب أو اضغط على الجانبين لتقليب الصفحات، وعلى الوسط لإظهار الأزرار.';
+    'اسحب الصفحة لتقليبها، واضغط عليها لإظهار الأزرار.';
   hint.hidden=false; setTimeout(dismissHint, 6000);
   showUI(3500);
 })();
