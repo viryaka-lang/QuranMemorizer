@@ -69,23 +69,28 @@ button{cursor:pointer}
 :root[data-fit="fill"] .pg{aspect-ratio:auto;width:100cqw;height:100cqh;border-radius:0;box-shadow:none}
 :root[data-fit="fill"] .spread.two .pg{width:50cqw;border-radius:0}
 .pg img{position:absolute;display:block;max-width:none;object-fit:fill;-webkit-user-drag:none;pointer-events:none;
-  filter:brightness(var(--dim,1));transition:filter .25s ease}
+  filter:var(--plain) brightness(var(--dim,1));transition:filter .25s ease}
 /* reading tones: warm softens the white, night inverts the page and keeps the tajweed colours readable */
 :root[data-tone="warm"] .pg{background:#f3e7c9}
+/* plain text: every tone's filter starts with --plain. Off it does nothing; on it turns the page grey and pushes
+   everything darker than the paper (the tajweed colours included) to black and the paper to white, so the text
+   comes out in one colour: black by day, white in the night and black tones */
+:root{--plain:grayscale(0)}
+:root[data-plain]{--plain:grayscale(1) brightness(.625) contrast(8)}
 /* fill mode cuts off the legend row with the printed page number, so the number is drawn over the empty top
    row instead, as a box like the printed «حزب» label (placed per page in placeNumber()) */
 .pno{position:absolute;display:none;place-items:center;
   background:#fff;border:max(1px,.12cqh) solid #1a9a4e;color:#000;font:700 1.9cqh/1 "Times New Roman",Times,serif;font-variant-numeric:lining-nums tabular-nums;
-  filter:brightness(var(--dim,1));transition:filter .25s ease}
+  filter:var(--plain) brightness(var(--dim,1));transition:filter .25s ease}
 :root[data-fit="fill"]:not([data-meanings]) .pg:not(.deco) .pno{display:grid}
 .pg .miss{position:absolute;left:10%;right:10%;top:45%;text-align:center;color:#5d6b63;font-size:14px;line-height:1.6}
-:root[data-tone="warm"] .pg img,:root[data-tone="warm"] .pno{filter:sepia(.4) saturate(.9) brightness(calc(var(--dim,1) * .96))}
+:root[data-tone="warm"] .pg img,:root[data-tone="warm"] .pno{filter:var(--plain) sepia(.4) saturate(.9) brightness(calc(var(--dim,1) * .96))}
 :root[data-tone="night"] .pg{background:#1e1c09}
-:root[data-tone="night"] .pg img,:root[data-tone="night"] .pno{filter:invert(.92) hue-rotate(180deg) saturate(.85) brightness(calc(var(--dim,1) * .88)) contrast(.95)}
+:root[data-tone="night"] .pg img,:root[data-tone="night"] .pno{filter:var(--plain) invert(.92) hue-rotate(180deg) saturate(.85) brightness(calc(var(--dim,1) * .88)) contrast(.95)}
 :root[data-tone="night"] .stage{background:#050706}
 /* black: full inversion pushed with contrast so the paper is exactly #000 (pixels off on OLED) and the text white */
 :root[data-tone="black"] .pg{background:#000;box-shadow:none}
-:root[data-tone="black"] .pg img,:root[data-tone="black"] .pno{filter:invert(1) hue-rotate(180deg) contrast(1.3) brightness(var(--dim,1))}
+:root[data-tone="black"] .pg img,:root[data-tone="black"] .pno{filter:var(--plain) invert(1) hue-rotate(180deg) contrast(1.3) brightness(var(--dim,1))}
 :root[data-tone="black"] .stage{background:#000}
 :root[data-tone="black"]{--ground:#000;--surface:#0b0b0b;--bar:rgba(0,0,0,.92);--line:#262626;--green-soft:#10251c;--accent-soft:#2a2210}
 
@@ -252,6 +257,7 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
       <button data-fit="fit">ملاءمة الصفحة</button><button data-fit="fill">ملء الشاشة</button>
     </div>
     <div class="gomsg" id="fitNote"></div>
+    <div class="row2"><span>ألوان التجويد<small id="plainNote">الحروف ملوّنة حسب أحكام التجويد</small></span><button class="pill" id="plainBtn" aria-pressed="true">مفعّل</button></div>
     <div class="row2"><span>معاني الكلمات<small>عرض الصفحة كاملة مع هامش معاني الكلمات</small></span><button class="pill" id="meanBtn" aria-pressed="false">متوقف</button></div>
     <label class="dim">السطوع <input type="range" id="dimRange" min="50" max="100" value="100" aria-label="سطوع الصفحة"> </label>
     <div class="cap">حركة تقليب الصفحة</div>
@@ -648,6 +654,13 @@ function setFit(f){
   $('fitNote').textContent = f==='fill' ? 'تُمدَّد الصفحة لتملأ الشاشة ويُخفى مفتاح ألوان التجويد أسفلها، فيبدو الخط أطول من أصله.' : 'تظهر الصفحة بأبعادها الأصلية.';
 }
 Array.prototype.forEach.call($('fitSeg').children, function(b){ b.onclick=function(){ setFit(b.dataset.fit); }; });
+function setPlain(on){
+  if(on) root.dataset.plain='1'; else delete root.dataset.plain;
+  store.set('plain', on);
+  $('plainBtn').textContent = on ? 'متوقف' : 'مفعّل'; $('plainBtn').setAttribute('aria-pressed', String(!on));
+  $('plainNote').textContent = on ? 'النص كله بلون واحد: أبيض في الوضعين الليلي والأسود، وأسود في النهاري' : 'الحروف ملوّنة حسب أحكام التجويد';
+}
+$('plainBtn').onclick=function(){ setPlain(!root.dataset.plain); };
 function setMeanings(on){
   if(on) root.dataset.meanings='1'; else delete root.dataset.meanings;
   store.set('meanings', on); reframe();
@@ -764,7 +777,7 @@ var rz; addEventListener('resize', function(){ clearTimeout(rz); rz=setTimeout(f
 /* ---------- start ---------- */
 (function(){
   var t=store.get('tone',null); if(!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
-  setTone(t,true); setBar(store.get('bottomBar',true)); setMeanings(store.get('meanings',false)); setFit(store.get('fit','fit')); setDim(store.get('dim',100)); oriApply();
+  setTone(t,true); setBar(store.get('bottomBar',true)); setPlain(store.get('plain',false)); setMeanings(store.get('meanings',false)); setFit(store.get('fit','fit')); setDim(store.get('dim',100)); oriApply();
   var q=new URLSearchParams(location.search), qp=parseInt(q.get('page'),10);
   go(qp>=1 ? qp : (pos[track]||1), true);
   history.replaceState({app:1, p:page, t:track}, '');
