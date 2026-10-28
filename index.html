@@ -72,11 +72,10 @@ button{cursor:pointer}
   filter:var(--plain) brightness(var(--dim,1));transition:filter .25s ease}
 /* reading tones: warm softens the white, night inverts the page and keeps the tajweed colours readable */
 :root[data-tone="warm"] .pg{background:#f3e7c9}
-/* plain text: every tone's filter starts with --plain. Off it does nothing; on it turns the page grey and pushes
-   everything darker than the paper (the tajweed colours included) to black and the paper to white, so the text
-   comes out in one colour: black by day, white in the night and black tones */
+/* plain text: every tone's filter starts with --plain. Off it does nothing; on it applies #plainFx (below the page),
+   which turns coloured letters as dark as black ones while keeping the smooth edges of every letter */
 :root{--plain:grayscale(0)}
-:root[data-plain]{--plain:grayscale(1) brightness(.625) contrast(8)}
+:root[data-plain]{--plain:url(#plainFx)}
 /* fill mode cuts off the legend row with the printed page number, so the number is drawn over the empty top
    row instead, as a box like the printed «حزب» label (placed per page in placeNumber()) */
 .pno{position:absolute;display:none;place-items:center;
@@ -180,6 +179,20 @@ kbd{font:11px var(--f-ui);border:1px solid var(--line);border-bottom-width:2px;b
 </head>
 <body>
 <main class="stage" id="stage" aria-label="صفحة المصحف"></main>
+<!-- tajweed colours off: grey level = luminance darkened by how colourful the pixel is (max-min of R,G,B, computed as
+     the sum of the clipped differences R-G, G-B, B-R). Colour below 0.15 is JPEG bleed around coloured letters and is
+     ignored, so no smudges; black letters and all edges keep their original anti-aliasing. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="plainFx" color-interpolation-filters="sRGB" x="0" y="0" width="1" height="1">
+    <feColorMatrix in="SourceGraphic" type="matrix" values="1 -1 0 0 0  0 1 -1 0 0  -1 0 1 0 0  0 0 0 0 1" result="diff"/>
+    <feColorMatrix in="diff" type="matrix" values="1 1 1 0 0  1 1 1 0 0  1 1 1 0 0  0 0 0 0 1" result="chroma"/>
+    <feComponentTransfer in="chroma" result="keep">
+      <feFuncR type="linear" slope="-2.8" intercept="1.42"/><feFuncG type="linear" slope="-2.8" intercept="1.42"/><feFuncB type="linear" slope="-2.8" intercept="1.42"/>
+    </feComponentTransfer>
+    <feColorMatrix in="SourceGraphic" type="matrix" values=".2126 .7152 .0722 0 0  .2126 .7152 .0722 0 0  .2126 .7152 .0722 0 0  0 0 0 1 0" result="luma"/>
+    <feComposite in="luma" in2="keep" operator="arithmetic" k1="1" k2="0" k3="0" k4="0"/>
+  </filter>
+</svg>
 
 <header class="bar top" id="topbar">
   <div class="row">
